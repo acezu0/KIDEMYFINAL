@@ -1,300 +1,553 @@
+<?php
+// Start the session to manage user data (mock database) and state
+session_start();
+
+// Initialize mock user storage in the session if it doesn't exist
+// In a real application, this array would be replaced by database interaction (PostgreSQL/PDO).
+if (!isset($_SESSION['mock_db_users'])) {
+    $_SESSION['mock_db_users'] = [];
+}
+
+$message = '';
+$message_type = 'info';
+$show_form = 'login'; // Default form view
+
+// Helper function for secure input sanitization
+function sanitize_input($data) {
+    return htmlspecialchars(strip_tags(trim($data)));
+}
+
+// ===================================
+// --- 📝 Registration Handler ---
+// ===================================
+if (isset($_POST['register'])) {
+    $show_form = 'register'; // Keep registration visible on error
+
+    $name = sanitize_input($_POST['name'] ?? '');
+    $email = sanitize_input($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? ''; // Do not sanitize password before hashing
+    $role = sanitize_input($_POST['role'] ?? '');
+
+    // 1. Basic Validation
+    if (empty($name) || empty($email) || empty($password) || !in_array($role, ['teacher', 'student'])) {
+        $message = 'Error: Please ensure all fields are filled correctly and a role is selected.';
+        $message_type = 'error';
+    }
+    // 2. Check for unique email (MOCK DB CHECK)
+    elseif (isset($_SESSION['mock_db_users'][$email])) {
+        $message = 'Error: This email is already registered. Please log in or use a different email.';
+        $message_type = 'error';
+    }
+    // 3. Security check (password length)
+    elseif (strlen($password) < 8) {
+        $message = 'Error: Password must be at least 8 characters long.';
+        $message_type = 'error';
+    }
+    else {
+        // --- REAL DATABASE INTEGRATION POINT ---
+        $password_hash = password_hash($password, PASSWORD_DEFAULT);
+        /*
+        // PLACE YOUR POSTGRESQL INSERT QUERY HERE using PDO:
+        // Example: INSERT INTO public.users (email, password_hash, name, role) VALUES (:email, :hash, :name, :role)
+        */
+
+        // --- MOCK DATABASE INSERT (for demonstration only) ---
+        $_SESSION['mock_db_users'][$email] = [
+            'name' => $name,
+            'password_hash' => $password_hash,
+            'role' => $role,
+            'id' => uniqid() // Mock UUID
+        ];
+        // -----------------------------------------------------
+
+        $message = "Success! Account created for **$name** as a **$role**. Please log in now.";
+        $message_type = 'success';
+        $show_form = 'login'; // Switch to login form after successful registration
+    }
+}
+
+// ===================================
+// --- 🔒 Login Handler ---
+// ===================================
+if (isset($_POST['login'])) {
+    $show_form = 'login'; // Keep login visible on error
+
+    $email = sanitize_input($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+    $is_valid = false;
+    $user = null;
+
+    if (empty($email) || empty($password)) {
+        $message = 'Error: Please enter both email and password.';
+        $message_type = 'error';
+    } else {
+        // --- REAL DATABASE INTEGRATION POINT ---
+        /*
+        // PLACE YOUR POSTGRESQL SELECT QUERY HERE using PDO:
+        // Example: SELECT id, password_hash, name, role FROM public.users WHERE email = :email
+        // $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        */
+
+        // --- MOCK DATABASE SELECT (for demonstration only) ---
+        $user = $_SESSION['mock_db_users'][$email] ?? null;
+
+        if ($user && password_verify($password, $user['password_hash'])) {
+            $is_valid = true;
+            // In a real application, you would set $_SESSION['user_id'] = $user['id'];
+        }
+        // -----------------------------------------------------
+
+        if ($is_valid) {
+            $message = "Login successful! Welcome back, **{$user['name']}** ({$user['role']}).";
+            $message_type = 'success';
+        } else {
+            $message = 'Error: Invalid email or password. Please try again.';
+            $message_type = 'error';
+        }
+    }
+}
+
+// Map message type to CSS classes
+$message_classes = [
+    'info' => 'msg-info',
+    'success' => 'msg-success',
+    'error' => 'msg-error'
+];
+
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kidemy Login and Account Creation</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>KidEMY! Login & Register</title>
     <style>
-        /* Custom Styles for a clean, educational green theme */
+        /* CSS RESET */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+        /* Green Color Palette (similar to the provided image's clean aesthetic) */
         :root {
-            --kidemy-green: #4CAF50; /* A vibrant, but friendly green */
-            --kidemy-light-green: #81C784;
-            --kidemy-background-light: #F7FBF7;
-            --kidemy-text-dark: #2C3E50;
+            --color-primary: #10B981;    /* Main Vibrant Green (like the button) */
+            --color-primary-dark: #059669; /* Darker Green for hover */
+            --color-light-green: #ECFDF5; /* Very light green for background details */
+            --color-background-soft: #fbfdff; /* Off-white background */
+            --color-text-main: #374151; /* Dark Gray for main text */
+            --color-text-sub: #6B7280;  /* Light Gray for secondary text */
+            --color-border: #D1D5DB;    /* Light border color */
+            --color-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
 
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--kidemy-background-light);
-            /* Centering classes are applied in the body tag below */
-        }
-
-        .split-card {
-            background-color: white;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            border-radius: 20px;
-            overflow: hidden;
+            background-color: var(--color-background-soft);
             display: flex;
-            max-width: 900px;
-            width: 90%;
-            min-height: 550px;
-            margin: 20px;
-        }
-
-        .form-side {
-            padding: 40px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
             justify-content: center;
-        }
-
-        .illustration-side {
-            flex: 1;
-            background-color: var(--kidemy-light-green); /* Light green background */
-            position: relative;
-            display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: center;
+            min-height: 100vh;
             padding: 20px;
         }
 
-        .form-container {
-            display: none;
-        }
-        .form-container.active {
-            display: block;
+        /* Main Layout Card */
+        .main-card {
+            display: flex;
+            width: 100%;
+            max-width: 950px;
+            min-height: 550px; /* Set min height to match design */
+            background-color: #fff;
+            border-radius: 16px;
+            box-shadow: var(--color-shadow);
+            overflow: hidden;
+            position: relative;
         }
 
-        /* Green Button Styles */
-        .kidemy-button {
-            background-color: var(--kidemy-green);
-            color: white;
-            font-weight: 600;
-            transition: background-color 0.2s, transform 0.2s;
+        /* Left Side (Illustration) */
+        .illustration-side {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background-color: var(--color-light-green); /* Light green background */
+            position: relative;
         }
-        .kidemy-button:hover {
-            background-color: #388E3C; /* Darker green on hover */
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--color-text-main);
+        }
+
+        .logo span {
+            color: var(--color-primary);
+        }
+        
+        /* Mock Illustration Placeholder */
+        .mock-illustration {
+            width: 100%;
+            height: 250px;
+            background-color: #D1FAE5; /* A slightly darker green */
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--color-primary-dark);
+            font-size: 16px;
+            font-weight: 600;
+            text-align: center;
+            opacity: 0.8;
+            margin: auto 0;
+            box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
+        }
+
+        /* Right Side (Form) */
+        .form-side {
+            flex: 1.2; /* Slightly wider for the form */
+            padding: 60px 50px;
+            position: relative;
+        }
+        
+        /* Removed .header-link CSS as requested */
+
+        .welcome-text h2 {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--color-text-main);
+            margin-bottom: 5px;
+        }
+        .welcome-text p {
+            font-size: 16px;
+            color: var(--color-text-sub);
+            margin-bottom: 30px;
+        }
+
+        /* --- Form Elements --- */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-text-main);
+            margin-bottom: 6px;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            font-size: 16px;
+            color: var(--color-text-main);
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        input:focus {
+            border-color: var(--color-primary);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+        }
+
+        /* --- Buttons --- */
+        .primary-button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+            background-color: var(--color-primary);
+            color: #fff;
+            box-shadow: 0 4px 10px rgba(16, 185, 129, 0.4);
+        }
+
+        .primary-button:hover {
+            background-color: var(--color-primary-dark);
             transform: translateY(-1px);
         }
 
-        /* Input Styles */
-        .kidemy-input {
-            border: 1px solid #D1D5DB;
-            background-color: #F9FAFB;
-            color: var(--kidemy-text-dark);
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-        .kidemy-input:focus {
-            border-color: var(--kidemy-green);
-            box-shadow: 0 0 0 1px var(--kidemy-green);
+        .toggle-link {
+            text-align: center;
+            margin-top: 25px;
+            font-size: 14px;
+            color: var(--color-text-sub);
         }
 
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .split-card {
-                flex-direction: column;
-                min-height: auto;
-            }
+        .toggle-link a {
+            color: var(--color-primary-dark);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .toggle-link a:hover {
+            text-decoration: underline;
+        }
+
+        /* --- Role Selection --- */
+        .role-options {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .role-label {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background-color: #fff;
+        }
+
+        .role-label:hover {
+            border-color: var(--color-primary);
+        }
+
+        .role-label input[type="radio"] {
+            display: none;
+        }
+
+        .role-label input[type="radio"]:checked + span {
+            color: var(--color-primary-dark);
+            font-weight: 700;
+        }
+        
+        .role-label input[type="radio"]:checked {
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+        }
+        
+        /* --- Form Toggling & Animation --- */
+        .form-box {
+            display: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+            position: absolute; 
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 60px 50px; /* Match form-side padding */
+        }
+
+        .form-box.active {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+            position: relative;
+        }
+
+        /* --- Message Box Styling --- */
+        .message-box {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            font-size: 14px;
+            font-weight: 500;
+            border-left: 5px solid;
+            display: none;
+            width: 100%;
+        }
+
+        .msg-success {
+            background-color: #D1FAE5;
+            color: var(--color-primary-dark);
+            border-color: var(--color-primary);
+        }
+
+        .msg-error {
+            background-color: #FEE2E2;
+            color: #DC2626;
+            border-color: #F87171;
+        }
+        
+        /* Media Queries for Responsiveness */
+        @media (max-width: 850px) {
             .illustration-side {
-                order: -1; /* Move illustration side to the top on mobile */
-                height: 200px;
-                border-radius: 20px 20px 0 0;
+                display: none; /* Hide illustration on smaller screens */
             }
-            .form-side {
+            .form-side, .form-box {
+                flex: 1;
+                padding: 40px 30px;
+            }
+            /* Removed header-link media query adjustments */
+            .main-card {
+                min-height: 500px;
+            }
+        }
+        @media (max-width: 480px) {
+            .welcome-text h2 {
+                font-size: 28px;
+            }
+            .form-side, .form-box {
                 padding: 30px 20px;
             }
         }
+
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen">
-    <div class="split-card">
-        
-        <!-- Form Side (Left) -->
-        <div class="form-side">
-            <!-- App Logo/Title -->
-            <div class="mb-8">
-                <div class="text-3xl font-extrabold text-gray-800">
-                    <span style="color: var(--kidemy-green);">KIDEMY</span>
-                </div>
-            </div>
+<body>
 
-            <!-- Login Form -->
-            <div id="login-view" class="form-container active">
-                <h2 class="text-4xl font-bold mb-2 text-gray-900">Welcome Back!</h2>
-                <p class="text-gray-500 mb-6">Log in to continue your learning journey.</p>
-                <form id="login-form">
-                    <div class="mb-4">
-                        <label for="login-email" class="block text-gray-700 text-sm font-medium mb-1">Email Address</label>
-                        <input type="email" id="login-email" class="kidemy-input w-full px-4 py-3 rounded-lg focus:outline-none" placeholder="student@kidemy.edu" required>
+    <div class="main-card">
+        
+        <!-- Left Side: Illustration and Logo -->
+        <div class="illustration-side">
+            <div class="logo">Kid<span>EMY!</span></div>
+            <div class="mock-illustration">
+                Illustration Placeholder <br>(Style of the provided image)
+            </div>
+            <!-- Empty space for clean bottom alignment -->
+            <div></div>
+        </div>
+
+        <!-- Right Side: Forms -->
+        <div class="form-side">
+            
+            <!-- PHP Message Display - Centered within the form area -->
+            <?php if (!empty($message)): ?>
+                <div id="message" class="message-box <?= $message_classes[$message_type] ?>" style="display: block;">
+                    <?= nl2br(str_replace(['**'], ['<strong>'], htmlspecialchars($message))) ?>
+                </div>
+            <?php endif; ?>
+
+            <!-- ======================= -->
+            <!-- 🔒 Login Form -->
+            <!-- ======================= -->
+            <div id="login-form" class="form-box">
+                <!-- REMOVED: header-link for SIGN UP -->
+                <div class="welcome-text">
+                    <h2>Welcome Back!</h2>
+                    <p>Sign in to continue your learning journey.</p>
+                </div>
+                
+                <form method="POST" action="">
+                    <input type="hidden" name="login" value="1">
+                    <div class="form-group">
+                        <label for="login_email">Email Address</label>
+                        <input type="email" id="login_email" name="email" placeholder="example@kidemy.com" required 
+                               value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
                     </div>
-                    <div class="mb-6">
-                        <label for="login-password" class="block text-gray-700 text-sm font-medium mb-1">Password</label>
-                        <input type="password" id="login-password" class="kidemy-input w-full px-4 py-3 rounded-lg focus:outline-none" placeholder="••••••••" required>
-                        <a href="#" class="text-xs text-gray-500 hover:text-gray-700 float-right mt-1">Forgot Password?</a>
+                    <div class="form-group">
+                        <label for="login_password">Password</label>
+                        <input type="password" id="login_password" name="password" placeholder="8+ characters" required>
                     </div>
-                    <button type="submit" class="kidemy-button w-full py-3 rounded-lg">
+                    <!-- Note: Forgot Password link goes here if desired -->
+                    <button type="submit" class="primary-button">
                         Login
                     </button>
-                    <p class="text-center mt-6 text-gray-500 text-sm">
-                        Don't have an account yet? <a href="#" id="show-register" class="text-green-600 hover:text-green-700 font-medium">Create one now</a>
+                    <p class="toggle-link">
+                        Don't have an account? 
+                        <a href="javascript:void(0);" onclick="showForm('register-form')">Register Now</a>
                     </p>
                 </form>
             </div>
 
-            <!-- Registration Form -->
-            <div id="register-view" class="form-container">
-                <h2 class="text-4xl font-bold mb-2 text-gray-900">Join Kidemy!</h2>
-                <p class="text-gray-500 mb-6">Start learning with our world-class platform.</p>
-                <form id="register-form">
-                    <div class="mb-4">
-                        <label for="register-email" class="block text-gray-700 text-sm font-medium mb-1">Email</label>
-                        <input type="email" id="register-email" class="kidemy-input w-full px-4 py-3 rounded-lg focus:outline-none" placeholder="your.name@email.com" required>
+            <!-- ======================= -->
+            <!-- 📝 Registration Form -->
+            <!-- ======================= -->
+            <div id="register-form" class="form-box">
+                <!-- REMOVED: header-link for SIGN IN -->
+                <div class="welcome-text">
+                    <h2>Register Your Account</h2>
+                    <p>Join KidEMY to access courses and resources.</p>
+                </div>
+
+                <form method="POST" action="">
+                    <input type="hidden" name="register" value="1">
+                    
+                    <div class="form-group">
+                        <label for="reg_name">Name</label>
+                        <input type="text" id="reg_name" name="name" placeholder="E.g., Chris" required 
+                               value="<?= htmlspecialchars($_POST['name'] ?? '') ?>">
                     </div>
-                    <div class="mb-4">
-                        <label for="name" class="block text-gray-700 text-sm font-medium mb-1">Full Name</label>
-                        <input type="text" id="name" class="kidemy-input w-full px-4 py-3 rounded-lg focus:outline-none" required>
+                    
+                    <div class="form-group">
+                        <label for="reg_email">Email</label>
+                        <input type="email" id="reg_email" name="email" placeholder="Used for sign in" required 
+                               value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
                     </div>
-                    <!-- NEW ROLE FIELD -->
-                    <div class="mb-4">
-                        <label for="role" class="block text-gray-700 text-sm font-medium mb-1">I am a...</label>
-                        <select id="role" class="kidemy-input w-full px-4 py-3 rounded-lg focus:outline-none" required>
-                            <option value="" disabled selected>Select your role</option>
-                            <option value="student">Student</option>
-                            <option value="teacher">Teacher</option>
-                        </select>
+                    
+                    <div class="form-group">
+                        <label for="reg_password">Password</label>
+                        <input type="password" id="reg_password" name="password" placeholder="8+ characters" required>
                     </div>
-                    <!-- END NEW ROLE FIELD -->
-                    <div class="mb-6">
-                        <label for="register-password" class="block text-gray-700 text-sm font-medium mb-1">Password</label>
-                        <input type="password" id="register-password" class="kidemy-input w-full px-4 py-3 rounded-lg focus:outline-none" placeholder="••••••••" required>
-                        <p class="text-xs text-gray-500 mt-1">8+ chars, upper & lower case, and a number required.</p>
+
+                    <div class="form-group">
+                        <label>Role</label>
+                        <div class="role-options">
+                            <label for="role_teacher" class="role-label">
+                                <input type="radio" id="role_teacher" name="role" value="teacher" required 
+                                    <?= (($_POST['role'] ?? '') === 'teacher') ? 'checked' : '' ?>>
+                                <span>Teacher</span>
+                            </label>
+                            <label for="role_student" class="role-label">
+                                <input type="radio" id="role_student" name="role" value="student" required 
+                                    <?= (($_POST['role'] ?? '') === 'student') ? 'checked' : '' ?>>
+                                <span>Student</span>
+                            </label>
+                        </div>
                     </div>
-                    <button type="submit" class="kidemy-button w-full py-3 rounded-lg">
-                        Create Account
+
+                    <button type="submit" class="primary-button">
+                        Register
                     </button>
-                    <p class="text-center mt-6 text-gray-500 text-sm">
-                        Already have an account? <a href="#" id="show-login" class="text-green-600 hover:text-green-700 font-medium">Sign In</a>
+                    <p class="toggle-link">
+                        Already registered? 
+                        <a href="javascript:void(0);" onclick="showForm('login-form')">Sign in here</a>
                     </p>
                 </form>
             </div>
 
-            <!-- OTP Verification View -->
-            <div id="otp-view" class="form-container">
-                <h2 class="text-4xl font-bold mb-2 text-gray-900">Verify Email</h2>
-                <p class="text-gray-500 mb-6">We sent a 6-digit code to your email. Please check your inbox.</p>
-                <form id="otp-form">
-                    <div class="mb-6">
-                        <label for="otp" class="block text-gray-700 text-sm font-medium mb-1">One-Time Pin</label>
-                        <input type="text" id="otp" maxlength="6" class="kidemy-input w-full px-4 py-3 rounded-lg text-center tracking-widest text-xl font-mono focus:outline-none" placeholder="Enter 6 digits" required>
-                    </div>
-                    <button type="submit" class="kidemy-button w-full py-3 rounded-lg">
-                        Confirm Verification
-                    </button>
-                </form>
-            </div>
+        </div>
 
-            <!-- Message Display -->
-            <div id="message" class="mt-8 text-center text-sm font-medium transition-colors duration-300 rounded-lg p-3"></div>
-        </div>
-        
-        <!-- Illustration Side (Right) -->
-        <div class="illustration-side">
-             <!-- Simple SVG for a book/graduation cap icon as a placeholder for a logo -->
-            <svg class="w-24 h-24 text-white mb-4" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 3L1 9l11 6 11-6-11-6zm0 14.28L4.05 13l-1.07.57L12 21l9.02-4.15-1.07-.57L12 17.28zM12 15L2.9 9.87 12 4.74l9.1 5.13L12 15z"/>
-                <path d="M12 17.28L12 21l9.02-4.15-1.07-.57L12 17.28z"/>
-            </svg>
-            <p class="text-white text-xl font-bold mb-2">Easy Navigation & Interactive Learning</p>
-            <p class="text-white text-opacity-80 text-center px-4">Explore educational content with simple controls and engaging activities designed for kids.</p>
-        </div>
     </div>
 
     <script>
-        const loginView = document.getElementById('login-view');
-        const registerView = document.getElementById('register-view');
-        const otpView = document.getElementById('otp-view');
+        /**
+         * Toggles the visibility of the login and registration forms with animation.
+         * @param {string} formId The ID of the form to show ('login-form' or 'register-form').
+         */
+        function showForm(formId) {
+            // Get all form elements
+            const formBoxes = document.querySelectorAll(".form-box");
+            const targetForm = document.getElementById(formId);
+            
+            // Remove 'active' class from all forms
+            formBoxes.forEach(form => form.classList.remove('active'));
+            
+            // Add 'active' class to the target form
+            if (targetForm) {
+                targetForm.classList.add('active');
+            }
 
-        const showRegisterLink = document.getElementById('show-register');
-        const showLoginLink = document.getElementById('show-login');
-
-        const loginForm = document.getElementById('login-form');
-        const registerForm = document.getElementById('register-form');
-        const otpForm = document.getElementById('otp-form');
-
-        const messageDiv = document.getElementById('message');
-
-        // Utility to show messages
-        function showMessage(text, isError = false) {
-            messageDiv.textContent = text;
-            if (isError) {
-                messageDiv.className = 'mt-8 text-center text-sm font-medium transition-colors duration-300 bg-red-100 text-red-700 rounded-lg p-3 border border-red-300';
-            } else {
-                messageDiv.className = 'mt-8 text-center text-sm font-medium transition-colors duration-300 bg-green-100 text-green-700 rounded-lg p-3 border border-green-300';
+            // Optionally hide the message box when switching forms manually
+            // We only hide it if the user manually toggles the form, not on page load after a form submission.
+            const messageBox = document.getElementById('message');
+            if (messageBox) {
+                // If message is currently visible and a manual toggle occurs, hide it
+                if (messageBox.style.display === 'block') {
+                    // Check if the current visible form is the one we are leaving (not perfect, but an attempt)
+                    const currentlyActiveForm = document.querySelector('.form-box.active');
+                    if (currentlyActiveForm && currentlyActiveForm.id !== formId) {
+                         messageBox.style.display = 'none';
+                    }
+                }
             }
         }
 
-        function showView(view) {
-            loginView.classList.remove('active');
-            registerView.classList.remove('active');
-            otpView.classList.remove('active');
-            view.classList.add('active');
-            messageDiv.textContent = '';
-            messageDiv.className = 'mt-8 text-center text-sm font-medium transition-colors duration-300';
-        }
-
-        showRegisterLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            showView(registerView);
-        });
-
-        showLoginLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            showView(loginView);
-        });
-
-        loginForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const email = document.getElementById('login-email').value;
-            // Simulated successful login
-            showMessage(`Success! Welcome back, ${email.split('@')[0]}.`, false);
-        });
-
-        registerForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            // Removed birthday/age logic
-            const role = document.getElementById('role').value;
-            const password = document.getElementById('register-password').value;
-
-            // 1. Role Check
-            if (!role) {
-                showMessage('Please select your role (Student or Teacher).', true);
-                return;
-            }
-            
-            // 2. Password Check: 8+ characters, one lowercase, one uppercase, one digit.
-            const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/;
-            if (!passwordRegex.test(password)) {
-                showMessage('Password must be 8+ characters, including upper case, lower case, and a number.', true);
-                return;
-            }
-
-            showMessage('Account details validated. Sending OTP for email verification...', false);
-            
-            // Simulate delay for OTP and transition to OTP view
-            setTimeout(() => {
-                showView(otpView);
-            }, 1000);
-        });
-
-        otpForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const otp = document.getElementById('otp').value;
-            
-            if (otp === '543210') { // Mock correct OTP
-                showMessage('Verification successful! Your Kidemy account is ready. Please log in.', false);
-                // Clear form fields for security
-                registerForm.reset();
-                setTimeout(() => {
-                     showView(loginView);
-                }, 1500);
-               
-            } else {
-                showMessage('Invalid verification code. Please try again.', true);
-            }
-        });
+        // Set the initial form state based on the PHP logic after page load/submission
+        window.onload = function() {
+            // The PHP variable $show_form determines which form ID to show.
+            showForm('<?= $show_form ?>-form'); 
+        };
     </script>
 </body>
 </html>
