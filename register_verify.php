@@ -2,22 +2,9 @@
 session_start();
 
 // =======================================================
-// 🟢 Supabase PostgreSQL Connection
+// 🟢 Supabase PostgreSQL Connection (via connect.php)
 // =======================================================
-$host = "db.gyiosfrjsbrkcsynxtkv.supabase.co";
-$dbname = "postgres";
-$user = "postgres";
-$password = "3D8DJDAL7N3";
-
-try {
-    $dsn = "pgsql:host=$host;port=5432;dbname=$dbname;";
-    $pdo = new PDO($dsn, $user, $password, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-    ]);
-} catch (PDOException $e) {
-    echo "Database connection failed: " . $e->getMessage();
-    exit;
-}
+require_once 'connect.php';
 
 $message = "";
 
