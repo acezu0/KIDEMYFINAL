@@ -8,7 +8,6 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'teacher') {
 }
 
 $user = $_SESSION['user'];
-
 ?>
 <!doctype html>
 <html lang="en">
@@ -19,10 +18,10 @@ $user = $_SESSION['user'];
     <style>
         /* Green Color Palette - Matching Student Dashboard */
         :root {
-            --primary-bg: #e8f9ed; /* Very light green/white background */
-            --sidebar-dark: #1f3f37; /* Dark forest green for sidebar */
-            --sidebar-light: #2c564a; /* Slightly lighter shade for hover/active */
-            --accent-green: #2ecc71; /* Bright primary green */
+            --primary-bg: #e8f9ed;
+            --sidebar-dark: #1f3f37;
+            --sidebar-light: #2c564a;
+            --accent-green: #2ecc71;
             --accent-green-hover: #27ae60;
             --text-dark: #1f3f37;
             --text-muted: #6c757d;
@@ -31,21 +30,19 @@ $user = $_SESSION['user'];
             --border-radius: 12px;
         }
 
-        /* Base Styles */
         * { box-sizing: border-box; }
         body { margin: 0; font-family: 'Inter', 'Segoe UI', system-ui, Arial, sans-serif; background: var(--primary-bg); color: var(--text-dark); }
         .app { display: flex; min-height: 100vh; }
 
-        /* Sidebar */
-        .sidebar { 
-            width: 260px; 
-            background: var(--sidebar-dark); 
-            color: #fff; 
-            padding: 20px; 
-            display: flex; 
-            flex-direction: column; 
-            gap: 18px; 
-            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1); 
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar-dark);
+            color: #fff;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
             position: sticky;
             top: 0;
             left: 0;
@@ -54,7 +51,6 @@ $user = $_SESSION['user'];
         .greet { font-weight: 700; font-size: 18px; }
         .role { font-size: 13px; color: rgba(255, 255, 255, 0.7); }
         .nav { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-        
         .btn {
             background: transparent;
             border: none;
@@ -70,65 +66,58 @@ $user = $_SESSION['user'];
             gap: 10px;
         }
         .btn:hover { background: var(--sidebar-light); }
-        .btn.active { 
-            background: var(--accent-green); 
+        .btn.active {
+            background: var(--accent-green);
             color: var(--text-dark);
             box-shadow: 0 4px 6px rgba(46, 204, 113, 0.3);
             font-weight: bold;
         }
 
-        /* Main Content */
         .main { flex: 1; padding: 28px; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        
-        /* Card styling */
-        .card { 
-            background: var(--card-light); 
-            padding: 18px; 
-            border-radius: var(--border-radius); 
+
+        .card {
+            background: var(--card-light);
+            padding: 18px;
+            border-radius: var(--border-radius);
             box-shadow: var(--shadow);
         }
 
-        /* Layout for Lesson Management */
         .content-area { display: flex; gap: 20px; margin-top: 20px; }
         .content-area > .left { width: 360px; }
         .content-area > .right { flex: 1; }
-        
-        /* List Styles for Folders */
-        .list-item { 
-            display: flex; 
-            justify-content: space-between; 
+
+        .list-item {
+            display: flex;
+            justify-content: space-between;
             align-items: center;
-            padding: 10px; 
-            border-radius: 8px; 
-            margin-bottom: 8px; 
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 8px;
             background: var(--primary-bg);
             border-left: 4px solid var(--sidebar-light);
             transition: background 0.2s, border-left 0.2s;
         }
-        .list-item:hover { background: #d7f5df; } 
+        .list-item:hover { background: #d7f5df; }
 
-        /* Form Styles */
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 14px; color: var(--text-dark); }
         .form-group input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: #fcfcfc; }
 
-        /* Helpers */
         small.muted { color: var(--text-muted); }
-        button:not(.btn) { 
-            background: var(--accent-green); 
-            color: white; 
-            border: none; 
-            padding: 8px 15px; 
-            border-radius: 6px; 
-            cursor: pointer; 
+        button:not(.btn) {
+            background: var(--accent-green);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
             font-weight: 600;
             transition: background 0.2s, transform 0.1s;
         }
         button:hover:not(.btn) { background: var(--accent-green-hover); }
         button:active:not(.btn) { transform: scale(0.98); }
 
-        /* Message Box Styling */
         .message-box {
             padding: 15px;
             border-radius: 8px;
@@ -195,6 +184,17 @@ $user = $_SESSION['user'];
                     <div id="folder-file-list">
                         <small class="muted">Select a folder to see its contents.</small>
                     </div>
+
+                    <!-- 🟢 File Upload Form -->
+                    <form id="upload-form" action="upload_file.php" method="POST" enctype="multipart/form-data" style="margin-top:20px;">
+                        <h4>Upload File to Folder</h4>
+                        <input type="hidden" name="folder_id" id="selected-folder-id">
+                        <div class="form-group">
+                            <label>Select File (PDF, PPT, Image)</label>
+                            <input type="file" name="file" accept=".pdf,.ppt,.pptx,.jpg,.jpeg,.png" required>
+                        </div>
+                        <button type="submit">Upload</button>
+                    </form>
                 </div>
             </div>
         </main>
@@ -207,7 +207,6 @@ $user = $_SESSION['user'];
         const folderListDiv = document.getElementById('lesson-folder-list');
         const mainMessageDiv = document.getElementById('main-message');
 
-        // --- Function to display messages ---
         function showMessage(message, type = 'success') {
             mainMessageDiv.textContent = message;
             mainMessageDiv.className = `message-box msg-${type}`;
@@ -217,14 +216,13 @@ $user = $_SESSION['user'];
             }, 3000);
         }
 
-        // --- Function to fetch and render folders ---
         async function loadFolders() {
             try {
                 const response = await fetch('api.php?action=get_folders');
                 const result = await response.json();
 
                 if (result.success) {
-                    renderFolderList(result.data);
+                    renderFolderList(result.folders);
                 } else {
                     folderListDiv.innerHTML = `<small class="muted">Error: ${result.message}</small>`;
                 }
@@ -234,7 +232,6 @@ $user = $_SESSION['user'];
             }
         }
 
-        // --- Function to render the list of folders ---
         function renderFolderList(folders) {
             folderListDiv.innerHTML = '';
             if (folders.length === 0) {
@@ -251,11 +248,34 @@ $user = $_SESSION['user'];
                         <div><small class="muted">Created: ${new Date(folder.created_at).toLocaleDateString()}</small></div>
                     </div>
                 `;
+                el.addEventListener('click', () => {
+                    document.getElementById('selected-folder-id').value = folder.id;
+                    loadFiles(folder.id);
+                });
                 folderListDiv.appendChild(el);
             });
         }
 
-        // --- Event Listener for creating a new folder ---
+        async function loadFiles(folderId) {
+            const response = await fetch('api.php?action=get_files&folder_id=' + folderId);
+            const result = await response.json();
+            const fileList = document.getElementById('folder-file-list');
+
+            if (result.success && result.files.length > 0) {
+                fileList.innerHTML = result.files.map(f => `
+                    <div class="list-item">
+                        <div>
+                            <strong>📄 ${escapeHtml(f.file_name)}</strong><br>
+                            <small class="muted">${new Date(f.uploaded_at).toLocaleString()}</small>
+                        </div>
+                        <a href="${escapeHtml(f.file_path)}" target="_blank" style="color:var(--accent-green);font-weight:600;">View</a>
+                    </div>
+                `).join('');
+            } else {
+                fileList.innerHTML = '<small class="muted">No files uploaded in this folder yet.</small>';
+            }
+        }
+
         newFolderForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             const folderName = folderNameInput.value.trim();
@@ -277,8 +297,8 @@ $user = $_SESSION['user'];
 
                 if (result.success) {
                     showMessage('Folder created successfully!');
-                    folderNameInput.value = ''; // Clear input
-                    loadFolders(); // Refresh the list
+                    folderNameInput.value = '';
+                    loadFolders();
                 } else {
                     showMessage(result.message, 'error');
                 }
@@ -293,7 +313,6 @@ $user = $_SESSION['user'];
             return String(s).replace(/[&<>"]|(?<!\d)'/g, i => `&#${i.charCodeAt(0)};`);
         }
 
-        // --- Initial Load ---
         loadFolders();
     });
     </script>
