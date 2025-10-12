@@ -1,132 +1,166 @@
 <?php
+// =======================================================
+// 🧠 api.php — Robust action parsing (supports snake/camel/case)
+// =======================================================
+require_once 'connect.php'; // returns $pdo (PDO connection)
 session_start();
-require_once 'connect.php'; // Ensure this provides $pdo connection
+
+// Basic auth check for teacher
+if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'teacher') {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit();
+}
+$teacher_id = $_SESSION['user']['id']; // UUID
 
 header('Content-Type: application/json');
 
-if (!isset($_SESSION['user'])) {
-  echo json_encode(["success" => false, "message" => "Unauthorized"]);
-  exit;
-}
+// -----------------------------
+// Normalize incoming action name
+// -----------------------------
+$rawAction = $_REQUEST['action'] ?? '';
+// Lower-case, remove non-alphanumeric to normalize snake/camel/kebab etc.
+$normalized = strtolower(preg_replace('/[^a-z0-9]/', '', $rawAction));
 
-$user = $_SESSION['user'];
-$teacher_id = $user['id'];
-$action = $_REQUEST['action'] ?? '';
+// Map normalized keys to canonical actions used below
+$map = [
+    'getfolders'   => 'getFolders',
+    'get_folder'   => 'getFolders',
+    'getfolders'   => 'getFolders',
+    'getfiles'     => 'getFiles',
+    'get_files'    => 'getFiles',
+    'createfolder' => 'createFolder',
+    'create_folder'=> 'createFolder',
+    'deletefolder' => 'deleteFolder',
+    'delete_folder'=> 'deleteFolder',
+    'deletefile'   => 'deleteFile',
+    'delete_file'  => 'deleteFile'
+];
 
-if (!$action) {
-  echo json_encode(["success" => false, "message" => "No action specified."]);
-  exit;
+$action = $map[$normalized] ?? '';
+
+// Small helper to respond and exit
+function respond($data, $httpCode = 200) {
+    http_response_code($httpCode);
+    echo json_encode($data);
+    exit();
 }
 
 try {
-  // 🔹 CREATE FOLDER
-  if ($action === 'create_folder') {
-    $folder_name = trim($_POST['folder_name'] ?? '');
-    if ($folder_name === '') {
-      echo json_encode(["success" => false, "message" => "Missing required fields."]);
-      exit;
+    switch ($action) {
+
+        // =======================================================
+        // 📂 Get all folders for the current teacher
+        // Endpoint examples:
+        // api.php?action=getFolders
+        // api.php?action=get_folders
+        // =======================================================
+        case 'getFolders':
+            $query = "SELECT id, name, description, created_at
+                      FROM folders
+                      WHERE teacher_id = :teacher_id
+                      ORDER BY created_at DESC";
+            $stmt = $pdo->prepare($query);
+            $stmt->execute([':teacher_id' => $teacher_id]);
+            $folders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            respond(['success' => true, 'folders' => $folders]);
+            break;
+
+        // =======================================================
+        // 📁 Get files within a folder
+        // Example: api.php?action=getFiles&folder_id=UUID
+        // =======================================================
+        case 'getFiles':
+            $folder_id = $_GET['folder_id'] ?? $_REQUEST['folder_id'] ?? null;
+            if (!$folder_id) respond(['success' => false, 'message' => 'Missing folder ID'], 400);
+
+            $query = "SELECT id, file_name, file_path, uploaded_at, uploaded_by
+                      FROM files
+                      WHERE folder_id = :folder_id
+                      ORDER BY uploaded_at DESC";
+            $stmt = $pdo->prepare($query);
+            $stmt->execute([':folder_id' => $folder_id]);
+            $files = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            respond(['success' => true, 'files' => $files]);
+            break;
+
+        // =======================================================
+        // 📘 Create a new folder
+        // Accepts: JSON POST or Form POST (FormData) with either:
+        // - name (or folder_name)
+        // - description (optional)
+        // =======================================================
+        case 'createFolder':
+            // Get data from JSON body OR from form fields
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!is_array($input)) $input = [];
+
+            // Merge with $_POST in case form-data or form submitted
+            $name = $input['name'] ?? $input['folder_name'] ?? $_POST['name'] ?? $_POST['folder_name'] ?? null;
+            $description = $input['description'] ?? $_POST['description'] ?? null;
+
+            if (!$name || trim($name) === '') {
+                respond(['success' => false, 'message' => 'Folder name is required'], 400);
+            }
+
+            $query = "INSERT INTO folders (name, description, teacher_id) VALUES (:name, :description, :teacher_id)";
+            $stmt = $pdo->prepare($query);
+            $stmt->execute([
+                ':name'       => trim($name),
+                ':description'=> $description ?: null,
+                ':teacher_id' => $teacher_id
+            ]);
+
+            respond(['success' => true, 'message' => 'Folder created successfully!']);
+            break;
+
+        // =======================================================
+        // 🗑️ Delete a folder (and its files)
+        // Example: api.php?action=deleteFolder&id=UUID
+        // =======================================================
+        case 'deleteFolder':
+            $id = $_GET['id'] ?? $_REQUEST['id'] ?? null;
+            if (!$id) respond(['success' => false, 'message' => 'Missing folder ID'], 400);
+
+            // Delete the folder only if it belongs to this teacher
+            $query = "DELETE FROM folders WHERE id = :id AND teacher_id = :teacher_id";
+            $stmt = $pdo->prepare($query);
+            $stmt->execute([':id' => $id, ':teacher_id' => $teacher_id]);
+
+            respond(['success' => true, 'message' => 'Folder deleted successfully!']);
+            break;
+
+        // =======================================================
+        // 🗑️ Delete a file (removes file from disk and DB)
+        // Example: api.php?action=deleteFile&id=UUID
+        // =======================================================
+        case 'deleteFile':
+            $id = $_GET['id'] ?? $_REQUEST['id'] ?? null;
+            if (!$id) respond(['success' => false, 'message' => 'Missing file ID'], 400);
+
+            // Get file record
+            $stmt = $pdo->prepare("SELECT file_path FROM files WHERE id = :id");
+            $stmt->execute([':id' => $id]);
+            $file = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$file) {
+                respond(['success' => false, 'message' => 'File not found.'], 404);
+            }
+
+            $file_path = __DIR__ . '/' . $file['file_path'];
+            if (file_exists($file_path)) {
+                @unlink($file_path);
+            }
+
+            $delete = $pdo->prepare("DELETE FROM files WHERE id = :id");
+            $delete->execute([':id' => $id]);
+
+            respond(['success' => true, 'message' => 'File deleted successfully!']);
+            break;
+
+        default:
+            respond(['success' => false, 'message' => 'Invalid or missing action'], 400);
     }
-
-    $stmt = $pdo->prepare("INSERT INTO folders (teacher_id, name, created_at) VALUES (?, ?, NOW())");
-    $stmt->execute([$teacher_id, $folder_name]);
-
-    echo json_encode(["success" => true, "message" => "Folder created successfully."]);
-  }
-
-  // 🔹 GET FOLDERS
-  elseif ($action === 'get_folders') {
-    $stmt = $pdo->prepare("SELECT id, name, created_at FROM folders WHERE teacher_id = ? ORDER BY created_at DESC");
-    $stmt->execute([$teacher_id]);
-    $folders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    echo json_encode(["success" => true, "data" => $folders]);
-  }
-
-  // 🔹 DELETE FOLDER
-  elseif ($action === 'delete_folder') {
-    $folder_id = $_GET['folder_id'] ?? '';
-    if ($folder_id === '') {
-      echo json_encode(["success" => false, "message" => "Missing folder ID."]);
-      exit;
-    }
-
-    // Delete files first
-    $pdo->prepare("DELETE FROM files WHERE folder_id = ?")->execute([$folder_id]);
-    $pdo->prepare("DELETE FROM folders WHERE id = ? AND teacher_id = ?")->execute([$folder_id, $teacher_id]);
-
-    echo json_encode(["success" => true, "message" => "Folder deleted successfully."]);
-  }
-
-  // 🔹 GET FILES IN FOLDER
-  elseif ($action === 'get_files') {
-    $folder_id = $_GET['folder_id'] ?? '';
-    if ($folder_id === '') {
-      echo json_encode(["success" => false, "message" => "Missing folder ID."]);
-      exit;
-    }
-
-    $stmt = $pdo->prepare("SELECT id, file_name, file_url, uploaded_at FROM files WHERE folder_id = ? ORDER BY uploaded_at DESC");
-    $stmt->execute([$folder_id]);
-    $files = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    echo json_encode(["success" => true, "data" => $files]);
-  }
-
-  // 🔹 UPLOAD FILE
-  elseif ($action === 'upload_file') {
-    if (!isset($_FILES['file']) || !isset($_POST['folder_id'])) {
-      echo json_encode(["success" => false, "message" => "Missing required fields."]);
-      exit;
-    }
-
-    $folder_id = $_POST['folder_id'];
-    $file = $_FILES['file'];
-
-    if ($file['error'] !== UPLOAD_ERR_OK) {
-      echo json_encode(["success" => false, "message" => "File upload error."]);
-      exit;
-    }
-
-    // Store file in local /uploads
-    $upload_dir = __DIR__ . '/uploads/';
-    if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
-
-    $filename = time() . '_' . preg_replace("/[^a-zA-Z0-9_\.-]/", "_", $file['name']);
-    $target_path = $upload_dir . $filename;
-    move_uploaded_file($file['tmp_name'], $target_path);
-
-    $file_url = 'uploads/' . $filename;
-
-    $stmt = $pdo->prepare("INSERT INTO files (folder_id, file_name, file_url, uploaded_at) VALUES (?, ?, ?, NOW())");
-    $stmt->execute([$folder_id, $file['name'], $file_url]);
-
-    echo json_encode(["success" => true, "message" => "File uploaded successfully."]);
-  }
-
-  // 🔹 DELETE FILE
-  elseif ($action === 'delete_file') {
-    $file_id = $_GET['file_id'] ?? '';
-    if ($file_id === '') {
-      echo json_encode(["success" => false, "message" => "Missing file ID."]);
-      exit;
-    }
-
-    // Delete physical file
-    $stmt = $pdo->prepare("SELECT file_url FROM files WHERE id = ?");
-    $stmt->execute([$file_id]);
-    $file = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($file && file_exists(__DIR__ . '/' . $file['file_url'])) {
-      unlink(__DIR__ . '/' . $file['file_url']);
-    }
-
-    $pdo->prepare("DELETE FROM files WHERE id = ?")->execute([$file_id]);
-    echo json_encode(["success" => true, "message" => "File deleted successfully."]);
-  }
-
-  else {
-    echo json_encode(["success" => false, "message" => "Invalid action."]);
-  }
-
-} catch (Exception $e) {
-  echo json_encode(["success" => false, "message" => $e->getMessage()]);
+} catch (PDOException $e) {
+    respond(['success' => false, 'message' => 'Database error: ' . $e->getMessage()], 500);
 }

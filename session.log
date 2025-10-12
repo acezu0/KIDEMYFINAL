@@ -1,0 +1,11 @@
+Array
+(
+    [user] => Array
+        (
+            [id] => 1b8bbd3c-1d3a-4bbd-a576-96b48b0d734e
+            [name] => Mar
+            [role] => teacher
+            [password_hash] => $2y$08$U9K5K1r.9YLfNzwvmjkFuOZrjRZObJcU6s/mcvnq9hy0cGf4Em3Su
+        )
+
+)
