@@ -3,7 +3,7 @@
 // 🧠 api.php — Unified API for Teacher Dashboard
 // Handles folders, file uploads, courses, and enrollment
 // =======================================================
-require_once 'connect.php'; // must return $pdo
+require_once 'connect.php'; // must return $pdo (PDO)
 session_start();
 header('Content-Type: application/json; charset=utf-8');
 
@@ -37,32 +37,50 @@ try {
         case 'get_folders':
         case 'getfolders':
             $stmt = $pdo->prepare("
-                SELECT id, name, description, created_at
-                FROM folders
-                WHERE teacher_id = :tid
-                ORDER BY created_at DESC
+                SELECT f.id, f.name, f.description, f.created_at, c.title AS course_title
+                FROM folders f
+                LEFT JOIN courses c ON f.course_id = c.id
+                WHERE f.teacher_id = :tid
+                ORDER BY f.created_at DESC
             ");
             $stmt->execute([':tid' => $teacher_id]);
             respond(['success' => true, 'folders' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
             break;
 
         // ===================================================
-        // 🗂️ 2. Create a folder
+        // 🗂️ 2. Create Folder (linked to a Course)
         // ===================================================
         case 'create_folder':
         case 'createfolder':
             $input = json_decode(file_get_contents('php://input'), true) ?? [];
-            $name = trim($input['folder_name'] ?? $input['name'] ?? $_POST['folder_name'] ?? '');
+            $name = trim($input['folder_name'] ?? $_POST['folder_name'] ?? '');
             $description = trim($input['description'] ?? $_POST['description'] ?? '');
+            $course_id = trim($input['course_id'] ?? $_POST['course_id'] ?? '');
 
-            if ($name === '') respond(['success' => false, 'message' => 'Folder name required.'], 400);
+            if ($name === '' || $course_id === '')
+                respond(['success' => false, 'message' => 'Folder name and course are required.'], 400);
+
+            // Verify teacher exists
+            $verify = $pdo->prepare("SELECT id FROM users WHERE id = :tid AND role = 'teacher'");
+            $verify->execute([':tid' => $teacher_id]);
+            if ($verify->rowCount() === 0)
+                respond(['success' => false, 'message' => 'Invalid teacher session.'], 403);
+
+            // Validate course ownership
+            $check = $pdo->prepare("SELECT id FROM courses WHERE id = :cid AND teacher_id = :tid");
+            $check->execute([':cid' => $course_id, ':tid' => $teacher_id]);
+            if ($check->rowCount() === 0)
+                respond(['success' => false, 'message' => 'Invalid or unauthorized course.'], 400);
 
             $stmt = $pdo->prepare("
-                INSERT INTO folders (name, description, teacher_id, created_at)
-                VALUES (:n, :d, :tid, NOW())
+                INSERT INTO folders (name, description, teacher_id, course_id, created_at)
+                VALUES (:n, :d, :tid, :cid, NOW())
+                RETURNING id
             ");
-            $stmt->execute([':n' => $name, ':d' => $description ?: null, ':tid' => $teacher_id]);
-            respond(['success' => true, 'message' => 'Folder created successfully.']);
+            $stmt->execute([':n' => $name, ':d' => $description ?: null, ':tid' => $teacher_id, ':cid' => $course_id]);
+            $folder_id = $stmt->fetchColumn();
+
+            respond(['success' => true, 'message' => 'Folder created successfully.', 'folder_id' => $folder_id]);
             break;
 
         // ===================================================
@@ -84,93 +102,73 @@ try {
             break;
 
         // ===================================================
-        // ⬆️ 4. Upload file into folder
+        // ⬆️ 4. Upload file (merged upload_file.php logic)
         // ===================================================
         case 'upload_file':
         case 'uploadfile':
-            $folder_id = $_POST['folder_id'] ?? '';
-            if (!$folder_id) respond(['success' => false, 'message' => 'Missing folder ID.'], 400);
-            if (empty($_FILES['file']['name'])) respond(['success' => false, 'message' => 'No file uploaded or upload error.'], 400);
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST')
+                respond(['success' => false, 'message' => 'Invalid request method.'], 400);
 
-            // Ensure upload directory exists
-            $upload_dir = __DIR__ . '/uploads/' . $teacher_id . '/' . $folder_id;
-            if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+            if (empty($_POST['folder_id']) || empty($_FILES['file']))
+                respond(['success' => false, 'message' => 'Missing folder_id or file.'], 400);
 
+            $folder_id = $_POST['folder_id'];
+
+            // Verify folder ownership
+            $stmt = $pdo->prepare("SELECT id, course_id FROM folders WHERE id = :fid AND teacher_id = :tid LIMIT 1");
+            $stmt->execute([':fid' => $folder_id, ':tid' => $teacher_id]);
+            $folder = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$folder)
+                respond(['success' => false, 'message' => 'Folder not found or not owned by you.'], 403);
+
+            $course_id = $folder['course_id'];
             $file = $_FILES['file'];
-            $file_name = basename($file['name']);
-            $target_path = $upload_dir . '/' . $file_name;
-            $relative_path = 'uploads/' . $teacher_id . '/' . $folder_id . '/' . $file_name;
 
-            $allowed = ['pdf', 'ppt', 'pptx', 'png', 'jpg', 'jpeg', 'gif'];
-            $ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-            if (!in_array($ext, $allowed)) {
-                respond(['success' => false, 'message' => 'Unsupported file type.'], 400);
-            }
+            if ($file['error'] !== UPLOAD_ERR_OK)
+                respond(['success' => false, 'message' => 'File upload error (code ' . $file['error'] . ').'], 400);
 
-            if (!move_uploaded_file($file['tmp_name'], $target_path)) {
-                respond(['success' => false, 'message' => 'File upload failed.'], 500);
-            }
+            $originalName = basename($file['name']);
+            $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+            $allowed = ['pdf', 'ppt', 'pptx', 'jpg', 'jpeg', 'png'];
 
+            if (!in_array($ext, $allowed))
+                respond(['success' => false, 'message' => 'Invalid file type. Allowed: PDF, PPT, PPTX, JPG, PNG.'], 400);
+
+            // Prepare upload directory
+            $uploadDir = __DIR__ . '/uploads/';
+            if (!is_dir($uploadDir) && !mkdir($uploadDir, 0777, true))
+                respond(['success' => false, 'message' => 'Unable to create uploads directory.'], 500);
+
+            // Unique name
+            $uniqueName = uniqid('file_', true) . '.' . $ext;
+            $destination = $uploadDir . $uniqueName;
+            $relativePath = 'uploads/' . $uniqueName;
+
+            if (!move_uploaded_file($file['tmp_name'], $destination))
+                respond(['success' => false, 'message' => 'Failed to move uploaded file.'], 500);
+
+            // Insert into DB
             $stmt = $pdo->prepare("
-                INSERT INTO files (folder_id, file_name, file_path, uploaded_by, uploaded_at, mime_type)
-                VALUES (:fid, :fname, :fpath, :uid, NOW(), :mime)
+                INSERT INTO files (folder_id, course_id, file_name, file_path, uploaded_by, uploaded_at)
+                VALUES (:fid, :cid, :fname, :fpath, :uploaded_by, NOW())
             ");
             $stmt->execute([
                 ':fid' => $folder_id,
-                ':fname' => $file_name,
-                ':fpath' => $relative_path,
-                ':uid' => $teacher_id,
-                ':mime' => $file['type'] ?? null
+                ':cid' => $course_id,
+                ':fname' => $originalName,
+                ':fpath' => $relativePath,
+                ':uploaded_by' => $teacher_id
             ]);
 
-            respond(['success' => true, 'message' => 'File uploaded successfully.']);
+            respond([
+                'success' => true,
+                'message' => 'File uploaded successfully!',
+                'file_path' => $relativePath
+            ]);
             break;
 
         // ===================================================
-        // ❌ 5. Delete a file
-        // ===================================================
-        case 'delete_file':
-        case 'deletefile':
-            $id = $_GET['id'] ?? $_POST['id'] ?? '';
-            if (!$id) respond(['success' => false, 'message' => 'Missing file ID.'], 400);
-
-            $stmt = $pdo->prepare("SELECT file_path FROM files WHERE id = :id");
-            $stmt->execute([':id' => $id]);
-            $file = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$file) respond(['success' => false, 'message' => 'File not found.'], 404);
-
-            $abs_path = __DIR__ . '/' . $file['file_path'];
-            if (file_exists($abs_path)) @unlink($abs_path);
-
-            $pdo->prepare("DELETE FROM files WHERE id = :id")->execute([':id' => $id]);
-            respond(['success' => true, 'message' => 'File deleted successfully.']);
-            break;
-
-        // ===================================================
-        // 🧾 6. Delete a folder (and its files)
-        // ===================================================
-        case 'delete_folder':
-        case 'deletefolder':
-            $id = $_GET['id'] ?? $_POST['id'] ?? '';
-            if (!$id) respond(['success' => false, 'message' => 'Missing folder ID.'], 400);
-
-            // Delete files on disk + DB
-            $stmt = $pdo->prepare("SELECT file_path FROM files WHERE folder_id = :fid");
-            $stmt->execute([':fid' => $id]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $file) {
-                $abs = __DIR__ . '/' . $file['file_path'];
-                if (file_exists($abs)) @unlink($abs);
-            }
-
-            $pdo->prepare("DELETE FROM files WHERE folder_id = :fid")->execute([':fid' => $id]);
-            $pdo->prepare("DELETE FROM folders WHERE id = :fid AND teacher_id = :tid")
-                ->execute([':fid' => $id, ':tid' => $teacher_id]);
-
-            respond(['success' => true, 'message' => 'Folder and its files deleted.']);
-            break;
-
-        // ===================================================
-        // 🎓 7. Courses
+        // 🎓 5. Courses
         // ===================================================
         case 'get_courses':
         case 'getcourses':
@@ -199,40 +197,49 @@ try {
             break;
 
         // ===================================================
-        // 👩‍🎓 8. Enrollment
+        // 👩‍🎓 6. Enrollment (Reflects on Student Dashboard)
         // ===================================================
-        case 'enroll_student':
-        case 'enrollstudent':
-            $email = $_POST['student_email'] ?? '';
+        case 'enroll_student_by_email':
             $course_id = $_POST['course_id'] ?? '';
-            if (!$email || !$course_id)
-                respond(['success' => false, 'message' => 'Missing student email or course ID.'], 400);
+            $email = trim($_POST['email'] ?? '');
+            $teacher_id = $_SESSION['user']['id'];
 
-            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = :e AND role = 'student' LIMIT 1");
-            $stmt->execute([':e' => $email]);
+            if (!$course_id || !$email) {
+                respond(["success"=>false,"message"=>"Missing email or course ID."], 400);
+            }
+
+            // Find student by email
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND role = 'student'");
+            $stmt->execute([$email]);
             $student = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$student) respond(['success' => false, 'message' => 'Student not found.'], 404);
 
-            $stmt = $pdo->prepare("
-                INSERT INTO enrollments (student_id, course_id, enrolled_at)
-                VALUES (:sid, :cid, NOW())
-                ON CONFLICT (student_id, course_id) DO NOTHING
-            ");
-            $stmt->execute([':sid' => $student['id'], ':cid' => $course_id]);
-            respond(['success' => true, 'message' => 'Student enrolled successfully.']);
-            break;
+            if (!$student) {
+                respond(["success"=>false,"message"=>"No student found with that email."], 404);
+            }
+
+            // Check if already enrolled
+            $check = $pdo->prepare("SELECT id FROM enrollments WHERE course_id = ? AND student_id = ?");
+            $check->execute([$course_id, $student['id']]);
+            if ($check->fetch()) {
+                respond(["success"=>false,"message"=>"Student is already enrolled."]);
+            }
+
+            // Enroll the student
+            $ins = $pdo->prepare("INSERT INTO enrollments (course_id, student_id) VALUES (?, ?)");
+            $ins->execute([$course_id, $student['id']]);
+
+            respond(["success"=>true,"message"=>"Student enrolled successfully."]);
 
         case 'get_enrolled_students':
-        case 'getenrolledstudents':
-            $course_id = $_GET['course_id'] ?? $_POST['course_id'] ?? '';
+            $course_id = $_GET['course_id'] ?? '';
             if (!$course_id) respond(['success' => false, 'message' => 'Missing course ID.'], 400);
 
             $stmt = $pdo->prepare("
-                SELECT u.id, u.name, u.email, e.enrolled_at
+                SELECT u.name, u.email
                 FROM enrollments e
-                JOIN users u ON u.id = e.student_id
+                JOIN users u ON e.student_id = u.id
                 WHERE e.course_id = :cid
-                ORDER BY e.enrolled_at DESC
+                ORDER BY u.name
             ");
             $stmt->execute([':cid' => $course_id]);
             respond(['success' => true, 'students' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
