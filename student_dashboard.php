@@ -1,7 +1,7 @@
 <?php
 session_start();
 
-// Check if the user is logged in and is a student
+// ✅ Check if user is logged in and is a student
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'student') {
     header("Location: login.php");
     exit();
@@ -12,323 +12,353 @@ $user = $_SESSION['user'];
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Student Dashboard</title>
+  <meta charset="utf-8" />
+  <link rel="icon" href="/favicon.ico" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Student Dashboard</title>
 
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://kit.fontawesome.com/c36cb32178.js" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --primary-bg: #e8f9ed;
+      --sidebar-dark: #1f3f37;
+      --sidebar-light: #2c564a;
+      --accent-green: #2ecc71;
+      --accent-green-hover: #27ae60;
+      --text-dark: #1f3f37;
+      --text-muted: #6c757d;
+      --card-light: #ffffff;
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --border-radius: 12px;
+    }
 
-    <script>
-        const __user_name = '<?= htmlspecialchars($user['name']) ?>';
-        const __user_role = '<?= htmlspecialchars($user['role']) ?>';
-    </script>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', 'Segoe UI', Arial, sans-serif; background: var(--primary-bg); color: var(--text-dark); }
+    .app { display: flex; min-height: 100vh; }
 
-    <style>
-        /* Green Color Palette */
-        :root {
-            --primary-bg: #e8f9ed;
-            --sidebar-dark: #1f3f37;
-            --sidebar-light: #2c564a;
-            --accent-green: #2ecc71;
-            --accent-green-hover: #27ae60;
-            --text-dark: #1f3f37;
-            --text-muted: #6c757d;
-            --card-light: #ffffff;
-            --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-            --border-radius: 12px;
-        }
+    .sidebar {
+      width: 260px; background: var(--sidebar-dark); color: #fff;
+      padding: 20px; display: flex; flex-direction: column; gap: 18px;
+    }
 
-        * { box-sizing: border-box; }
-        body { margin: 0; font-family: 'Inter', 'Segoe UI', Arial, sans-serif; background: var(--primary-bg); color: var(--text-dark); }
-        .app { display: flex; min-height: 100vh; }
+    .greet { font-weight: 700; font-size: 18px; }
+    .role { font-size: 13px; color: rgba(255,255,255,0.7); }
+    .user-id-display { font-size: 11px; color: rgba(255,255,255,0.5); word-break: break-all; margin-top: 5px; }
 
-        /* Sidebar */
-        .sidebar { 
-            width: 260px; 
-            background: var(--sidebar-dark); 
-            color: #fff; 
-            padding: 20px; 
-            display: flex; 
-            flex-direction: column; 
-            gap: 18px; 
-            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-        }
-        .greet { font-weight: 700; font-size: 18px; }
-        .role { font-size: 13px; color: rgba(255,255,255,0.7); }
-        .user-id-display { font-size: 11px; color: rgba(255,255,255,0.5); word-break: break-all; margin-top: 5px; }
-        .nav { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-        .btn {
-            background: transparent; border: none; color: #fff;
-            padding: 10px 12px; text-align: left; border-radius: 8px;
-            cursor: pointer; font-weight: 600;
-            transition: background 0.2s;
-            display: flex; align-items: center; gap: 10px;
-        }
-        .btn:hover { background: var(--sidebar-light); }
-        .btn.active {
-            background: var(--accent-green); color: var(--text-dark);
-            box-shadow: 0 4px 6px rgba(46, 204, 113, 0.3);
-        }
+    .nav { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .btn {
+      background: transparent; border: none; color: #fff; padding: 10px 12px;
+      text-align: left; border-radius: 8px; cursor: pointer; font-weight: 600;
+      transition: background 0.2s; display: flex; align-items: center; gap: 10px;
+    }
 
-        /* Main content */
-        .main { flex: 1; padding: 28px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .btn:hover { background: var(--sidebar-light); }
+    .btn.active { background: var(--accent-green); color: var(--text-dark); box-shadow: 0 4px 6px rgba(46, 204, 113, 0.3); }
 
-        .card { background: var(--card-light); padding: 18px; border-radius: var(--border-radius); box-shadow: var(--shadow); }
+    .main { flex: 1; padding: 28px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 
-        /* Metrics */
-        .overview-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .metric-card {
-            padding: 20px;
-            border-radius: 12px;
-            color: white;
-            font-weight: 700;
-        }
-        #metric1 { background: #3498db; }
-        #metric2 { background: #9b59b6; }
-        #metric3 { background: #2ecc71; }
-        #metric4 { background: #f1c40f; }
-        .metric-value { font-size: 24px; margin-bottom: 5px; }
-        .metric-label { font-size: 14px; opacity: 0.9; }
+    .card { background: var(--card-light); padding: 18px; border-radius: var(--border-radius); box-shadow: var(--shadow); }
 
-        /* Content Area */
-        .content-area { display: flex; gap: 20px; margin-top: 20px; }
-        .content-area > .left { flex: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .content-area > .right { flex: 1; }
+    .overview-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+    .metric-card { padding: 20px; border-radius: 12px; color: white; font-weight: 700; }
+    #metric1 { background: #3498db; } #metric2 { background: #9b59b6; } #metric3 { background: #2ecc71; } #metric4 { background: #f1c40f; }
+    .metric-value { font-size: 24px; margin-bottom: 5px; }
+    .metric-label { font-size: 14px; opacity: 0.9; }
 
-        /* Fixed Chart Container */
-        #progressChart {
-            width: 100%;
-            max-width: 320px;
-            height: 320px !important;
-            margin: 0 auto;
-            display: block;
-        }
+    .list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-radius: 8px; margin-bottom: 8px; background: var(--primary-bg); border-left: 4px solid var(--accent-green); }
+    small.muted { color: var(--text-muted); }
 
-        /* List Items */
-        .list-item {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 10px; border-radius: 8px; margin-bottom: 8px;
-            background: var(--primary-bg);
-            border-left: 4px solid var(--accent-green);
-        }
+    /* ============================= */
+    /*  File Grid Layout           */
+    /* ============================= */
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-top: 10px;
+    }
 
-        small.muted { color: var(--text-muted); }
+    .file-grid .file-card {
+      background: #fff;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: 0.2s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
 
-        @media (max-width: 1024px) {
-            .overview-grid { grid-template-columns: repeat(2, 1fr); }
-            .content-area { flex-direction: column; }
-            #progressChart { max-width: 250px; height: 250px !important; }
-        }
-        @media (max-width: 600px) {
-            .overview-grid { grid-template-columns: 1fr; }
-            #progressChart { max-width: 220px; height: 220px !important; }
-        }
-    </style>
+    .file-grid .file-card:hover {
+      background: #e6ffe6;
+      transform: translateY(-3px);
+    }
+
+    .file-card i {
+      font-size: 30px;
+      color: #16a34a;
+    }
+
+    /* ============================= */
+    /* 🪟 File Preview Modal         */
+    /* ============================= */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      padding-top: 80px;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.7);
+    }
+
+    .modal-content {
+      background: #fff;
+      margin: auto;
+      padding: 20px;
+      border-radius: 16px;
+      width: 80%;
+      max-width: 800px;
+      position: relative;
+    }
+
+    .close-btn {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      font-size: 24px;
+      color: #555;
+      cursor: pointer;
+    }
+
+    .close-btn:hover { color: #000; }
+
+    .file-viewer {
+      margin-top: 15px;
+      width: 100%;
+      height: 500px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .download-btn {
+      display: inline-block;
+      margin-top: 10px;
+      background: #16a34a;
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .download-btn:hover { background: #128138; }
+  </style>
 </head>
 <body>
 <div class="app">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-        <div style="font-size:20px; font-weight:bold; margin-bottom:10px;">
-            <span style="color:var(--accent-green)">KID</span>EMY
+  <aside class="sidebar">
+    <div style="font-size:20px; font-weight:bold; margin-bottom:10px;">
+      <span style="color:var(--accent-green)">KID</span>EMY
+    </div>
+    <div>
+      <div class="greet" id="greeting">Loading...</div>
+      <div class="role" id="role">Authenticating...</div>
+      <div class="user-id-display" id="userIdDisplay"></div>
+    </div>
+    <nav class="nav">
+      <button class="btn active" data-view="dashboard">📚 My Dashboard</button>
+      <button class="btn" data-view="courses">📖 My Courses</button>
+      <button class="btn" data-view="files">📂 Course Files</button>
+      <button class="btn" style="margin-top:15px;background:#c0392b !important;" id="logout-btn">⏻ Sign Out</button>
+    </nav>
+    <div style="margin-top:auto;font-size:12px;opacity:0.7">Supabase Connected</div>
+  </aside>
+
+  <main class="main">
+    <div class="header">
+      <h2 id="pageTitle">Student Dashboard</h2>
+      <div class="card" style="padding:10px 14px; font-weight:600;">Welcome, <span id="userNameDisplay">Student</span>! 👋</div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="overview-grid">
+      <div class="metric-card" id="metric1"><div class="metric-value" id="courses-enrolled">0</div><div class="metric-label">Courses Enrolled</div></div>
+      <div class="metric-card" id="metric2"><div class="metric-value" id="lessons-completed">0</div><div class="metric-label">Lessons Completed</div></div>
+      <div class="metric-card" id="metric3"><div class="metric-value" id="overall-progress">0%</div><div class="metric-label">Overall Progress</div></div>
+      <div class="metric-card" id="metric4"><div class="metric-value" id="assignments-due">0</div><div class="metric-label">Assignments Due</div></div>
+    </div>
+
+    <section id="dashboardView">
+      <div class="card">
+        <h3>My Overview</h3>
+        <p>This dashboard summarizes your course activity and files uploaded by teachers.</p>
+      </div>
+    </section>
+
+    <section id="coursesView" style="display:none;">
+      <div class="card">
+        <h3>Enrolled Courses</h3>
+        <div id="courseList"><small class="muted">Loading your enrolled courses...</small></div>
+      </div>
+    </section>
+
+    <section id="filesView" style="display:none;">
+      <div class="card">
+        <div class="files-section">
+          <h2>📁 My Files</h2>
+          <div id="file-list" class="file-grid"></div>
         </div>
-        <div>
-            <div class="greet" id="greeting">Loading...</div>
-            <div class="role" id="role">Authenticating...</div>
-            <div class="user-id-display" id="userIdDisplay"></div>
+
+        <!-- 🪟 File Preview Modal -->
+        <div id="fileModal" class="modal">
+          <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h3 id="fileTitle"></h3>
+            <div id="fileViewer" class="file-viewer"></div>
+            <a id="downloadLink" href="#" target="_blank" class="download-btn">⬇ Download File</a>
+          </div>
         </div>
-
-        <nav class="nav">
-            <button class="btn active" data-view="dashboard">📚 My Dashboard</button>
-            <button class="btn" data-view="courses">📖 My Courses</button>
-            <button class="btn" data-view="settings">⚙️ Settings</button>
-            <button class="btn" style="margin-top:15px;background:#c0392b !important;" onclick="confirmLogout()">⏻ Sign Out</button>
-        </nav>
-
-        <div style="margin-top:auto;font-size:12px;opacity:0.7">Supabase Connected</div>
-    </aside>
-
-    <!-- Main -->
-    <main class="main">
-        <div class="header">
-            <h2 id="pageTitle">Student Dashboard</h2>
-            <div class="card" style="padding:10px 14px; font-weight:600;">Welcome, <span id="userNameDisplay">Student</span>! 👋</div>
-        </div>
-
-        <!-- Metrics -->
-        <div class="overview-grid">
-            <div class="metric-card" id="metric1">
-                <div class="metric-value" id="courses-enrolled">0</div>
-                <div class="metric-label">Courses Enrolled</div>
-            </div>
-            <div class="metric-card" id="metric2">
-                <div class="metric-value" id="lessons-completed">0</div>
-                <div class="metric-label">Lessons Completed</div>
-            </div>
-            <div class="metric-card" id="metric3">
-                <div class="metric-value" id="overall-progress">0%</div>
-                <div class="metric-label">Overall Progress</div>
-            </div>
-            <div class="metric-card" id="metric4">
-                <div class="metric-value" id="assignments-due">0</div>
-                <div class="metric-label">Assignments Due</div>
-            </div>
-        </div>
-
-        <!-- Dashboard View -->
-        <section id="dashboardView">
-            <div class="content-area">
-                <div class="left card">
-                    <h3>My Progress</h3>
-                    <canvas id="progressChart"></canvas>
-                </div>
-                <div class="right card">
-                    <h3>Upcoming Deadlines</h3>
-                    <div id="deadlinesList">
-                        <small class="muted">No upcoming deadlines.</small>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Courses View -->
-        <section id="coursesView" style="display:none;margin-top:18px">
-            <div class="card">
-                <h3>Enrolled Courses</h3>
-                <div id="courseList"><small class="muted">You are not enrolled in any courses yet.</small></div>
-            </div>
-        </section>
-
-        <!-- Settings View -->
-        <section id="settingsView" style="display:none;margin-top:18px">
-            <div class="card">
-                <h3>Profile & Account Settings</h3>
-                <div id="profileInfo"></div>
-            </div>
-        </section>
-    </main>
+      </div>
+    </section>
+  </main>
 </div>
 
 <script>
-    const greetingEl = document.getElementById('greeting');
-    const roleEl = document.getElementById('role');
-    const userIdDisplay = document.getElementById('userIdDisplay');
-    const userNameDisplay = document.getElementById('userNameDisplay');
-    const pageTitle = document.getElementById('pageTitle');
-    const dashboardView = document.getElementById('dashboardView');
-    const coursesView = document.getElementById('coursesView');
-    const settingsView = document.getElementById('settingsView');
-    const courseListEl = document.getElementById('courseList');
-    const deadlinesListEl = document.getElementById('deadlinesList');
-    const progressChartCtx = document.getElementById('progressChart');
+const user = <?= json_encode($user) ?>;
+const greetingEl = document.getElementById('greeting');
+const roleEl = document.getElementById('role');
+const userIdDisplay = document.getElementById('userIdDisplay');
+const userNameDisplay = document.getElementById('userNameDisplay');
+const courseListEl = document.getElementById('courseList');
 
-    const coursesEnrolledEl = document.getElementById('courses-enrolled');
-    const lessonsCompletedEl = document.getElementById('lessons-completed');
-    const overallProgressEl = document.getElementById('overall-progress');
-    const assignmentsDueEl = document.getElementById('assignments-due');
+greetingEl.textContent = `Hello, ${user.name}!`;
+roleEl.textContent = `Role: ${user.role}`;
+userNameDisplay.textContent = user.name;
+userIdDisplay.textContent = `User ID: ${user.id}`;
 
-    let chart;
+// ===============================
+// 🔹 Sidebar Navigation
+// ===============================
+document.querySelectorAll('.btn[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.btn[data-view]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const view = btn.dataset.view;
+    document.getElementById('dashboardView').style.display = view === 'dashboard' ? 'block' : 'none';
+    document.getElementById('coursesView').style.display = view === 'courses' ? 'block' : 'none';
+    document.getElementById('filesView').style.display = view === 'files' ? 'block' : 'none';
+    if (view === 'courses') loadCourses();
+    if (view === 'files') loadFiles();
+  });
+});
 
-    async function initializeDashboard() {
-        const user = JSON.parse('<?= json_encode($user) ?>');
-        greetingEl.textContent = `Hello, ${escapeHtml(user.name)}!`;
-        userNameDisplay.textContent = escapeHtml(user.name);
-        roleEl.textContent = `Role: ${escapeHtml(user.role)}`;
-        userIdDisplay.textContent = `User ID: ${escapeHtml(user.id)}`;
+// ===============================
+// 📁 Load Files
+// ===============================
+async function loadFiles() {
+  const res = await fetch(`student_api.php?action=get_all_files_for_student`);
+  const data = await res.json();
+  const container = document.getElementById('file-list');
+  container.innerHTML = '';
 
-        try {
-            const response = await fetch('student_api.php?action=get_dashboard_data');
-            const result = await response.json();
-            if (result.success) {
-                const data = result.data;
-                coursesEnrolledEl.textContent = data.coursesEnrolled;
-                lessonsCompletedEl.textContent = data.lessonsCompleted;
-                overallProgressEl.textContent = `${data.overallProgress}%`;
-                assignmentsDueEl.textContent = data.assignmentsDue;
-                renderDeadlines(data.deadlines);
-                renderChart(data.overallProgress);
-                renderCourseList(data.courses);
-                renderProfile(user);
-            } else alert(`Error: ${result.message}`);
-        } catch (error) {
-            console.error('Dashboard load failed:', error);
-        }
+  if (!data.success || data.files.length === 0) {
+    container.innerHTML = '<p>No files available in this folder.</p>';
+    return;
+  }
+
+  data.files.forEach(f => {
+    const card = document.createElement('div');
+    card.className = 'file-card';
+    card.innerHTML = `<i class="fa-solid fa-file"></i><p>${f.file_name}</p>`;
+    card.onclick = () => openFileModal(f);
+    container.appendChild(card);
+  });
+}
+
+// ===============================
+// 🪟 File Modal
+// ===============================
+const modal = document.getElementById('fileModal');
+const viewer = document.getElementById('fileViewer');
+const fileTitle = document.getElementById('fileTitle');
+const downloadLink = document.getElementById('downloadLink');
+const closeBtn = document.querySelector('.close-btn');
+
+function openFileModal(file) {
+  modal.style.display = 'block';
+  fileTitle.textContent = file.file_name;
+  downloadLink.href = file.file_path;
+  const ext = file.file_name.split('.').pop().toLowerCase();
+  viewer.innerHTML = '';
+
+  if (['pdf'].includes(ext)) {
+    viewer.innerHTML = `<iframe src="${file.file_path}" width="100%" height="100%" frameborder="0"></iframe>`;
+  } else if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+    viewer.innerHTML = `<img src="${file.file_path}" style="width:100%;height:100%;object-fit:contain;">`;
+  } else if (['mp4','webm'].includes(ext)) {
+    viewer.innerHTML = `<video src="${file.file_path}" controls style="width:100%;height:100%;"></video>`;
+  } else {
+    viewer.innerHTML = `<p>Preview not available for this file type.</p>`;
+  }
+}
+
+closeBtn.onclick = () => modal.style.display = 'none';
+window.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
+
+// ===============================
+// 📖 Load Enrolled Courses
+// ===============================
+async function loadCourses() {
+  courseListEl.innerHTML = '<small class="muted">Loading...</small>';
+  try {
+    const res = await fetch(`student_api.php?action=get_enrolled_courses`);
+    const data = await res.json();
+    if (!data.success || !data.courses.length) {
+      courseListEl.innerHTML = '<small class="muted">You are not enrolled in any courses yet.</small>';
+      return;
     }
-
-    function renderChart(progress) {
-        if (chart) chart.destroy();
-        chart = new Chart(progressChartCtx.getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: ['Completed', 'Incomplete'],
-                datasets: [{ data: [progress, 100 - progress], backgroundColor: ['#2ecc71', '#e0e6ed'], hoverOffset: 4 }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-        });
-    }
-
-    function renderDeadlines(deadlines) {
-        deadlinesListEl.innerHTML = '';
-        if (!deadlines.length) return deadlinesListEl.innerHTML = '<small class="muted">No upcoming deadlines.</small>';
-        deadlines.forEach(d => {
-            const el = document.createElement('div');
-            el.className = 'list-item';
-            el.innerHTML = `<strong>${escapeHtml(d.name)}</strong><span>${escapeHtml(d.due)}</span>`;
-            deadlinesListEl.appendChild(el);
-        });
-    }
-
-    function renderCourseList(courses) {
-        courseListEl.innerHTML = '';
-        if (!courses.length) return courseListEl.innerHTML = '<small class="muted">You are not enrolled in any courses yet.</small>';
-        courses.forEach(c => {
-            const el = document.createElement('div');
-            el.className = 'list-item';
-            el.innerHTML = `<strong>${escapeHtml(c.title)}</strong><small class="muted">Teacher: ${escapeHtml(c.teacher)}</small>`;
-            courseListEl.appendChild(el);
-        });
-    }
-
-    function renderProfile(user) {
-        document.getElementById('profileInfo').innerHTML = `
-            <form id="settingsForm">
-                <div class="form-group"><label>Display Name</label><input type="text" value="${escapeHtml(user.name)}" required></div>
-                <div class="form-group"><label>Email</label><input type="email" value="${escapeHtml(user.email)}" disabled></div>
-                <div class="form-group"><label>User ID</label><input type="text" value="${escapeHtml(user.id)}" disabled></div>
-                <div class="form-group"><label>Role</label><input type="text" value="${escapeHtml(user.role)}" disabled></div>
-                <button type="submit">Save Changes (Not Implemented)</button>
-            </form>`;
-        document.getElementById('settingsForm').onsubmit = e => { e.preventDefault(); alert('Profile update not yet implemented.'); };
-    }
-
-    function showView(viewName) {
-        dashboardView.style.display = viewName === 'dashboard' ? 'block' : 'none';
-        coursesView.style.display = viewName === 'courses' ? 'block' : 'none';
-        settingsView.style.display = viewName === 'settings' ? 'block' : 'none';
-        pageTitle.textContent = viewName.charAt(0).toUpperCase() + viewName.slice(1);
-    }
-
-    document.querySelectorAll('.btn[data-view]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.btn[data-view]').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            showView(btn.dataset.view);
-        });
+    courseListEl.innerHTML = '';
+    data.courses.forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      item.innerHTML = `<strong>${escapeHtml(c.title)}</strong>`;
+      courseListEl.appendChild(item);
     });
+  } catch (err) {
+    console.error(err);
+    courseListEl.innerHTML = '<small class="muted">Error loading courses.</small>';
+  }
+}
 
-    function confirmLogout() { window.location.href = 'logout.php'; }
+// Escape HTML
+function escapeHtml(text) {
+  return text.replace(/[\"&'\/<>]/g, function (a) {
+    return {
+      '"': '&quot;',
+      '&': '&amp;',
+      "'": '&#39;',
+      '/': '&#47;',
+      '<': '&lt;',
+      '>': '&gt;'
+    }[a];
+  });
+}
 
-    function escapeHtml(s) { return s ? String(s).replace(/[&<>'"`]/g, i => `&#${i.charCodeAt(0)};`) : ''; }
-
-    document.addEventListener('DOMContentLoaded', initializeDashboard);
+// ===============================
+// 🔸 Logout
+// ===============================
+function confirmLogout() {
+  if (confirm('Are you sure you want to log out?')) {
+    window.location.href = 'logout.php';
+  }
+}
+document.getElementById('logout-btn').addEventListener('click', confirmLogout);
 </script>
 </body>
 </html>
