@@ -3,7 +3,6 @@
 // 🟢 Supabase Connection
 // =======================================================
 require_once 'connect.php'; // make sure this returns a $pdo connection
-session_start();
 
 function sanitize($data) {
   return htmlspecialchars(strip_tags(trim($data)));

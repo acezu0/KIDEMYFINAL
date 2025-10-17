@@ -1,364 +1,226 @@
 <?php
+// =======================================================
+// 🟢 student_api.php — Student Dashboard + File Submission (Final)
+// =======================================================
+require_once 'connect.php';
 session_start();
+header('Content-Type: application/json; charset=utf-8');
 
-// ✅ Check if user is logged in and is a student
+// =======================================================
+// 🔒 Authentication Check
+// =======================================================
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'student') {
-    header("Location: login.php");
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit();
 }
 
-$user = $_SESSION['user'];
+$student_id = $_SESSION['user']['id'];
+$action = strtolower(trim($_GET['action'] ?? $_POST['action'] ?? ''));
+
+function respond($data, $status = 200) {
+    http_response_code($status);
+    echo json_encode($data);
+    exit();
+}
+
+// =======================================================
+// 📁 File Upload Helper
+// =======================================================
+function handleFileUpload($file, $targetDir = 'uploads/submissions/') {
+    if (!isset($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK)
+        return ['error' => 'Invalid file upload.'];
+
+    if (!is_dir($targetDir)) mkdir($targetDir, 0777, true);
+
+    $fileName = uniqid() . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', $file['name']);
+    $targetPath = $targetDir . $fileName;
+
+    if (!move_uploaded_file($file['tmp_name'], $targetPath))
+        return ['error' => 'Failed to move uploaded file.'];
+
+    return ['path' => $targetPath, 'name' => $file['name']];
+}
+
+// =======================================================
+// 🧩 Main Actions
+// =======================================================
+try {
+    switch ($action) {
+
+        // =======================================================
+        // 🎟️ 1. Join a Course
+        // =======================================================
+        case 'join_course':
+        case 'joincourse':
+            $code = trim($_POST['access_code'] ?? $_GET['access_code'] ?? '');
+            if ($code === '') respond(['success' => false, 'message' => 'Access code is required.'], 400);
+
+            $stmt = $pdo->prepare("SELECT id, title FROM courses WHERE access_code = :code LIMIT 1");
+            $stmt->execute([':code' => $code]);
+            $course = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$course) respond(['success' => false, 'message' => 'Invalid access code.'], 404);
+
+            $check = $pdo->prepare("SELECT id FROM enrollments WHERE course_id = :cid AND student_id = :sid");
+            $check->execute([':cid' => $course['id'], ':sid' => $student_id]);
+            if ($check->fetch()) respond(['success' => false, 'message' => 'Already enrolled.'], 400);
+
+            $pdo->prepare("INSERT INTO enrollments (course_id, student_id, enrolled_at) VALUES (:cid, :sid, NOW())")
+                ->execute([':cid' => $course['id'], ':sid' => $student_id]);
+
+            respond(['success' => true, 'message' => 'Successfully joined course!', 'course' => $course]);
+            break;
+
+        // =======================================================
+        // 📚 2. Get Enrolled Courses
+        // =======================================================
+        case 'get_enrolled_courses':
+        case 'getcourses':
+            $stmt = $pdo->prepare("
+                SELECT 
+                    c.id, c.title, c.description, c.access_code, c.created_at,
+                    u.name AS teacher_name
+                FROM enrollments e
+                JOIN courses c ON e.course_id = c.id
+                JOIN users u ON c.teacher_id = u.id
+                WHERE e.student_id = :sid
+                ORDER BY c.created_at DESC
+            ");
+            $stmt->execute([':sid' => $student_id]);
+            respond(['success' => true, 'courses' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        // =======================================================
+        // 📁 3. Get Folders inside a Course
+        // =======================================================
+        case 'get_folders':
+        case 'getfolders':
+            $course_id = $_GET['course_id'] ?? $_POST['course_id'] ?? '';
+            if (!$course_id) respond(['success' => false, 'message' => 'Missing course_id'], 400);
+
+            $check = $pdo->prepare("SELECT 1 FROM enrollments WHERE course_id = :cid AND student_id = :sid");
+            $check->execute([':cid' => $course_id, ':sid' => $student_id]);
+            if ($check->rowCount() === 0)
+                respond(['success' => false, 'message' => 'Not enrolled in this course.'], 403);
+
+            $stmt = $pdo->prepare("SELECT id, name, description, created_at FROM folders WHERE course_id = :cid ORDER BY created_at ASC");
+            $stmt->execute([':cid' => $course_id]);
+            respond(['success' => true, 'folders' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        // =======================================================
+        // 📄 4. Get Files inside a Folder
+        // =======================================================
+        case 'get_files':
+        case 'getfiles':
+            $folder_id = $_GET['folder_id'] ?? $_POST['folder_id'] ?? '';
+            if (!$folder_id) respond(['success' => false, 'message' => 'Missing folder_id'], 400);
+
+            $stmt = $pdo->prepare("
+                SELECT f.course_id
+                FROM folders f
+                JOIN enrollments e ON e.course_id = f.course_id
+                WHERE f.id = :fid AND e.student_id = :sid
+            ");
+            $stmt->execute([':fid' => $folder_id, ':sid' => $student_id]);
+            if ($stmt->rowCount() === 0)
+                respond(['success' => false, 'message' => 'Access denied.'], 403);
+
+            $stmt = $pdo->prepare("
+                SELECT id, file_name, file_path, uploaded_at, description
+                FROM files 
+                WHERE folder_id = :fid
+                ORDER BY uploaded_at DESC
+            ");
+            $stmt->execute([':fid' => $folder_id]);
+            respond(['success' => true, 'files' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        // =======================================================
+        // 🧷 5. Upload a Submission (Student Upload)
+        // =======================================================
+        case 'upload_submission':
+            $folder_id = $_POST['folder_id'] ?? '';
+            $file = $_FILES['file'] ?? null;
+            if (!$folder_id || !$file) respond(['success' => false, 'message' => 'Missing folder_id or file.'], 400);
+
+            // Verify folder access
+            $stmt = $pdo->prepare("
+                SELECT f.id AS folder_id, f.course_id 
+                FROM folders f 
+                JOIN enrollments e ON e.course_id = f.course_id 
+                WHERE f.id = :fid AND e.student_id = :sid
+            ");
+            $stmt->execute([':fid' => $folder_id, ':sid' => $student_id]);
+            $folder = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$folder) respond(['success' => false, 'message' => 'Invalid folder or not enrolled.'], 403);
+
+            $upload = handleFileUpload($file);
+            if (isset($upload['error'])) respond(['success' => false, 'message' => $upload['error']], 400);
+
+            $insert = $pdo->prepare("
+                INSERT INTO submissions (student_id, folder_id, file_name, file_url, uploaded_at)
+                VALUES (:sid, :fid, :fname, :furl, NOW())
+                RETURNING id
+            ");
+            $insert->execute([
+                ':sid' => $student_id,
+                ':fid' => $folder_id,
+                ':fname' => $upload['name'],
+                ':furl' => $upload['path']
+            ]);
+            $submission_id = $insert->fetchColumn();
+
+            respond(['success' => true, 'message' => 'File uploaded successfully!', 'submission_id' => $submission_id]);
+            break;
+
+        // =======================================================
+        // 📋 6. Get All Student Submissions
+        // =======================================================
+        case 'get_submissions':
+            $stmt = $pdo->prepare("
+                SELECT 
+                    s.id, s.file_name, s.file_url, s.uploaded_at, s.checked,
+                    f.name AS folder_name, c.title AS course_title
+                FROM submissions s
+                JOIN folders f ON s.folder_id = f.id
+                JOIN courses c ON f.course_id = c.id
+                WHERE s.student_id = :sid
+                ORDER BY s.uploaded_at DESC
+            ");
+            $stmt->execute([':sid' => $student_id]);
+            respond(['success' => true, 'submissions' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        // =======================================================
+        // ❌ 7. Delete a Submission
+        // =======================================================
+        case 'delete_submission':
+            $submission_id = $_POST['submission_id'] ?? '';
+            if (!$submission_id) respond(['success' => false, 'message' => 'Missing submission_id'], 400);
+
+            $stmt = $pdo->prepare("SELECT file_url, checked FROM submissions WHERE id = :sid AND student_id = :uid");
+            $stmt->execute([':sid' => $submission_id, ':uid' => $student_id]);
+            $file = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$file) respond(['success' => false, 'message' => 'Submission not found.'], 404);
+            if ($file['checked']) respond(['success' => false, 'message' => 'Cannot delete checked submission.'], 403);
+
+            if (file_exists($file['file_url'])) unlink($file['file_url']);
+            $pdo->prepare("DELETE FROM submissions WHERE id = :sid")->execute([':sid' => $submission_id]);
+
+            respond(['success' => true, 'message' => 'Submission deleted.']);
+            break;
+
+        // =======================================================
+        // 🚫 Default Invalid Action
+        // =======================================================
+        default:
+            respond(['success' => false, 'message' => 'Invalid or missing action parameter.'], 400);
+    }
+
+} catch (PDOException $e) {
+    respond(['success' => false, 'message' => 'Database error: ' . $e->getMessage()], 500);
+} catch (Exception $e) {
+    respond(['success' => false, 'message' => 'Server error: ' . $e->getMessage()], 500);
+}
 ?>
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <link rel="icon" href="/favicon.ico" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Student Dashboard</title>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://kit.fontawesome.com/c36cb32178.js" crossorigin="anonymous"></script>
-  <style>
-    :root {
-      --primary-bg: #e8f9ed;
-      --sidebar-dark: #1f3f37;
-      --sidebar-light: #2c564a;
-      --accent-green: #2ecc71;
-      --accent-green-hover: #27ae60;
-      --text-dark: #1f3f37;
-      --text-muted: #6c757d;
-      --card-light: #ffffff;
-      --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-      --border-radius: 12px;
-    }
-
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: 'Inter', 'Segoe UI', Arial, sans-serif; background: var(--primary-bg); color: var(--text-dark); }
-    .app { display: flex; min-height: 100vh; }
-
-    .sidebar {
-      width: 260px; background: var(--sidebar-dark); color: #fff;
-      padding: 20px; display: flex; flex-direction: column; gap: 18px;
-    }
-
-    .greet { font-weight: 700; font-size: 18px; }
-    .role { font-size: 13px; color: rgba(255,255,255,0.7); }
-    .user-id-display { font-size: 11px; color: rgba(255,255,255,0.5); word-break: break-all; margin-top: 5px; }
-
-    .nav { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-    .btn {
-      background: transparent; border: none; color: #fff; padding: 10px 12px;
-      text-align: left; border-radius: 8px; cursor: pointer; font-weight: 600;
-      transition: background 0.2s; display: flex; align-items: center; gap: 10px;
-    }
-
-    .btn:hover { background: var(--sidebar-light); }
-    .btn.active { background: var(--accent-green); color: var(--text-dark); box-shadow: 0 4px 6px rgba(46, 204, 113, 0.3); }
-
-    .main { flex: 1; padding: 28px; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-
-    .card { background: var(--card-light); padding: 18px; border-radius: var(--border-radius); box-shadow: var(--shadow); }
-
-    .overview-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
-    .metric-card { padding: 20px; border-radius: 12px; color: white; font-weight: 700; }
-    #metric1 { background: #3498db; } #metric2 { background: #9b59b6; } #metric3 { background: #2ecc71; } #metric4 { background: #f1c40f; }
-    .metric-value { font-size: 24px; margin-bottom: 5px; }
-    .metric-label { font-size: 14px; opacity: 0.9; }
-
-    .list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-radius: 8px; margin-bottom: 8px; background: var(--primary-bg); border-left: 4px solid var(--accent-green); }
-    small.muted { color: var(--text-muted); }
-
-    /* ============================= */
-    /*  File Grid Layout           */
-    /* ============================= */
-    .file-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-      margin-top: 10px;
-    }
-
-    .file-grid .file-card {
-      background: #fff;
-      border: 2px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 12px;
-      text-align: center;
-      cursor: pointer;
-      transition: 0.2s ease;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-    }
-
-    .file-grid .file-card:hover {
-      background: #e6ffe6;
-      transform: translateY(-3px);
-    }
-
-    .file-card i {
-      font-size: 30px;
-      color: #16a34a;
-    }
-
-    /* ============================= */
-    /* 🪟 File Preview Modal         */
-    /* ============================= */
-    .modal {
-      display: none;
-      position: fixed;
-      z-index: 9999;
-      padding-top: 80px;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0,0,0,0.7);
-    }
-
-    .modal-content {
-      background: #fff;
-      margin: auto;
-      padding: 20px;
-      border-radius: 16px;
-      width: 80%;
-      max-width: 800px;
-      position: relative;
-    }
-
-    .close-btn {
-      position: absolute;
-      top: 12px;
-      right: 16px;
-      font-size: 24px;
-      color: #555;
-      cursor: pointer;
-    }
-
-    .close-btn:hover { color: #000; }
-
-    .file-viewer {
-      margin-top: 15px;
-      width: 100%;
-      height: 500px;
-      background: #f8f9fa;
-      border-radius: 8px;
-      overflow: hidden;
-    }
-
-    .download-btn {
-      display: inline-block;
-      margin-top: 10px;
-      background: #16a34a;
-      color: #fff;
-      padding: 10px 16px;
-      border-radius: 8px;
-      text-decoration: none;
-      font-weight: 600;
-    }
-
-    .download-btn:hover { background: #128138; }
-  </style>
-</head>
-<body>
-<div class="app">
-  <aside class="sidebar">
-    <div style="font-size:20px; font-weight:bold; margin-bottom:10px;">
-      <span style="color:var(--accent-green)">KID</span>EMY
-    </div>
-    <div>
-      <div class="greet" id="greeting">Loading...</div>
-      <div class="role" id="role">Authenticating...</div>
-      <div class="user-id-display" id="userIdDisplay"></div>
-    </div>
-    <nav class="nav">
-      <button class="btn active" data-view="dashboard">📚 My Dashboard</button>
-      <button class="btn" data-view="courses">📖 My Courses</button>
-      <button class="btn" data-view="files">📂 Course Files</button>
-      <button class="btn" style="margin-top:15px;background:#c0392b !important;" id="logout-btn">⏻ Sign Out</button>
-    </nav>
-    <div style="margin-top:auto;font-size:12px;opacity:0.7">Supabase Connected</div>
-  </aside>
-
-  <main class="main">
-    <div class="header">
-      <h2 id="pageTitle">Student Dashboard</h2>
-      <div class="card" style="padding:10px 14px; font-weight:600;">Welcome, <span id="userNameDisplay">Student</span>! 👋</div>
-    </div>
-
-    <!-- Metrics -->
-    <div class="overview-grid">
-      <div class="metric-card" id="metric1"><div class="metric-value" id="courses-enrolled">0</div><div class="metric-label">Courses Enrolled</div></div>
-      <div class="metric-card" id="metric2"><div class="metric-value" id="lessons-completed">0</div><div class="metric-label">Lessons Completed</div></div>
-      <div class="metric-card" id="metric3"><div class="metric-value" id="overall-progress">0%</div><div class="metric-label">Overall Progress</div></div>
-      <div class="metric-card" id="metric4"><div class="metric-value" id="assignments-due">0</div><div class="metric-label">Assignments Due</div></div>
-    </div>
-
-    <section id="dashboardView">
-      <div class="card">
-        <h3>My Overview</h3>
-        <p>This dashboard summarizes your course activity and files uploaded by teachers.</p>
-      </div>
-    </section>
-
-    <section id="coursesView" style="display:none;">
-      <div class="card">
-        <h3>Enrolled Courses</h3>
-        <div id="courseList"><small class="muted">Loading your enrolled courses...</small></div>
-      </div>
-    </section>
-
-    <section id="filesView" style="display:none;">
-      <div class="card">
-        <div class="files-section">
-          <h2>📁 My Files</h2>
-          <div id="file-list" class="file-grid"></div>
-        </div>
-
-        <!-- 🪟 File Preview Modal -->
-        <div id="fileModal" class="modal">
-          <div class="modal-content">
-            <span class="close-btn">&times;</span>
-            <h3 id="fileTitle"></h3>
-            <div id="fileViewer" class="file-viewer"></div>
-            <a id="downloadLink" href="#" target="_blank" class="download-btn">⬇ Download File</a>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-</div>
-
-<script>
-const user = <?= json_encode($user) ?>;
-const greetingEl = document.getElementById('greeting');
-const roleEl = document.getElementById('role');
-const userIdDisplay = document.getElementById('userIdDisplay');
-const userNameDisplay = document.getElementById('userNameDisplay');
-const courseListEl = document.getElementById('courseList');
-
-greetingEl.textContent = `Hello, ${user.name}!`;
-roleEl.textContent = `Role: ${user.role}`;
-userNameDisplay.textContent = user.name;
-userIdDisplay.textContent = `User ID: ${user.id}`;
-
-// ===============================
-// 🔹 Sidebar Navigation
-// ===============================
-document.querySelectorAll('.btn[data-view]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.btn[data-view]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const view = btn.dataset.view;
-    document.getElementById('dashboardView').style.display = view === 'dashboard' ? 'block' : 'none';
-    document.getElementById('coursesView').style.display = view === 'courses' ? 'block' : 'none';
-    document.getElementById('filesView').style.display = view === 'files' ? 'block' : 'none';
-    if (view === 'courses') loadCourses();
-    if (view === 'files') loadFiles();
-  });
-});
-
-// ===============================
-// 📁 Load Files
-// ===============================
-async function loadFiles() {
-  const res = await fetch(`student_api.php?action=get_all_files_for_student`);
-  const data = await res.json();
-  const container = document.getElementById('file-list');
-  container.innerHTML = '';
-
-  if (!data.success || data.files.length === 0) {
-    container.innerHTML = '<p>No files available in this folder.</p>';
-    return;
-  }
-
-  data.files.forEach(f => {
-    const card = document.createElement('div');
-    card.className = 'file-card';
-    card.innerHTML = `<i class="fa-solid fa-file"></i><p>${f.file_name}</p>`;
-    card.onclick = () => openFileModal(f);
-    container.appendChild(card);
-  });
-}
-
-// ===============================
-// 🪟 File Modal
-// ===============================
-const modal = document.getElementById('fileModal');
-const viewer = document.getElementById('fileViewer');
-const fileTitle = document.getElementById('fileTitle');
-const downloadLink = document.getElementById('downloadLink');
-const closeBtn = document.querySelector('.close-btn');
-
-function openFileModal(file) {
-  modal.style.display = 'block';
-  fileTitle.textContent = file.file_name;
-  downloadLink.href = file.file_path;
-  const ext = file.file_name.split('.').pop().toLowerCase();
-  viewer.innerHTML = '';
-
-  if (['pdf'].includes(ext)) {
-    viewer.innerHTML = `<iframe src="${file.file_path}" width="100%" height="100%" frameborder="0"></iframe>`;
-  } else if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
-    viewer.innerHTML = `<img src="${file.file_path}" style="width:100%;height:100%;object-fit:contain;">`;
-  } else if (['mp4','webm'].includes(ext)) {
-    viewer.innerHTML = `<video src="${file.file_path}" controls style="width:100%;height:100%;"></video>`;
-  } else {
-    viewer.innerHTML = `<p>Preview not available for this file type.</p>`;
-  }
-}
-
-closeBtn.onclick = () => modal.style.display = 'none';
-window.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
-
-// ===============================
-// 📖 Load Enrolled Courses
-// ===============================
-async function loadCourses() {
-  courseListEl.innerHTML = '<small class="muted">Loading...</small>';
-  try {
-    const res = await fetch(`student_api.php?action=get_enrolled_courses`);
-    const data = await res.json();
-    if (!data.success || !data.courses.length) {
-      courseListEl.innerHTML = '<small class="muted">You are not enrolled in any courses yet.</small>';
-      return;
-    }
-    courseListEl.innerHTML = '';
-    data.courses.forEach(c => {
-      const item = document.createElement('div');
-      item.className = 'list-item';
-      item.innerHTML = `<strong>${escapeHtml(c.title)}</strong>`;
-      courseListEl.appendChild(item);
-    });
-  } catch (err) {
-    console.error(err);
-    courseListEl.innerHTML = '<small class="muted">Error loading courses.</small>';
-  }
-}
-
-// Escape HTML
-function escapeHtml(text) {
-  return text.replace(/[\"&'\/<>]/g, function (a) {
-    return {
-      '"': '&quot;',
-      '&': '&amp;',
-      "'": '&#39;',
-      '/': '&#47;',
-      '<': '&lt;',
-      '>': '&gt;'
-    }[a];
-  });
-}
-
-// ===============================
-// 🔸 Logout
-// ===============================
-function confirmLogout() {
-  if (confirm('Are you sure you want to log out?')) {
-    window.location.href = 'logout.php';
-  }
-}
-document.getElementById('logout-btn').addEventListener('click', confirmLogout);
-</script>
-</body>
-</html>
