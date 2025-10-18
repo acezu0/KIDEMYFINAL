@@ -1,30 +1,66 @@
 <?php
-session_start();
 // =======================================================
-// --- 🐘 PostgreSQL (Supabase) Database Connection ---
+// 🔗 connect.php — Unified Supabase + PHP Session Handler
 // =======================================================
 
-// --- 1. Connection Details ---
-// You can find these details in your Supabase project's dashboard.
-$host = 'db.gyiosfrjsbrkcsynxtkv.supabase.co';       // The host from your connection string
-$port = '5432';                      // The port from your connection string
-$dbname = "postgres";
-$user = "postgres";
-$password = "3D8DJDAL7N3"; // Your database password
+// --- Safe session start ---
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
-// --- 2. Create the DSN (Data Source Name) ---
-$dsn = "pgsql:host={$host};port={$port};dbname={$dbname}";
+// --- 🔐 Supabase Configuration ---
+define('SUPABASE_URL', 'https://gyiosfrjsbrkcsynxtkv.supabase.co');
+define('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5aW9zZnJqc2Jya2NzeW54dGt2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyOTA0OTcsImV4cCI6MjA3NDg2NjQ5N30.Yc08sv62N1Xi3uKpD5bMjqC6s5LRlgmneDRk8AmqCCo');
 
-// --- 3. Establish the Connection ---
-try {
-    // Create a new PDO instance
-    $pdo = new PDO($dsn, $user, $password, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+// --- 🐘 PostgreSQL (optional for admin scripts) ---
+$use_local_pg = true; // set to false if using only Supabase REST API
+
+if ($use_local_pg) {
+    $host = 'db.gyiosfrjsbrkcsynxtkv.supabase.co';
+    $port = '5432';
+    $dbname = 'postgres';
+    $user = 'postgres';
+    $password = '3D8DJDAL7N3';
+
+    try {
+        $dsn = "pgsql:host=$host;port=$port;dbname=$dbname";
+        $pdo = new PDO($dsn, $user, $password, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+        ]);
+    } catch (PDOException $e) {
+        die(json_encode(['success' => false, 'message' => 'Database connection failed: ' . $e->getMessage()]));
+    }
+} else {
+    $pdo = null; // only Supabase REST used
+}
+
+// --- 👤 Logged in user shortcut ---
+$_USER = $_SESSION['user'] ?? null;
+
+// --- ✅ Require Teacher Access ---
+function require_teacher() {
+    global $_USER;
+    if (!$_USER || $_USER['role'] !== 'teacher') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Unauthorized (teacher only).']);
+        exit();
+    }
+}
+
+// --- 🧰 Supabase REST Request Helper ---
+function supabase_fetch($table, $filter = '') {
+    $url = SUPABASE_URL . '/rest/v1/' . $table;
+    if ($filter) $url .= '?' . $filter;
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'apikey: ' . SUPABASE_ANON_KEY,
+        'Authorization: Bearer ' . SUPABASE_ANON_KEY
     ]);
-} catch (PDOException $e) {
-    // If connection fails, stop the script and display an error.
-    header('Content-Type: text/plain');
-    die("❌ Database Connection Failed: " . $e->getMessage());
+    $response = curl_exec($ch);
+    curl_close($ch);
+    return json_decode($response, true);
 }
 ?>

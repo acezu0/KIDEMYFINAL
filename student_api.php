@@ -1,14 +1,7 @@
 <?php
-// =======================================================
-// 🟢 student_api.php — Student Dashboard + File Submission (Final)
-// =======================================================
 require_once 'connect.php';
-session_start();
 header('Content-Type: application/json; charset=utf-8');
 
-// =======================================================
-// 🔒 Authentication Check
-// =======================================================
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'student') {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
@@ -16,7 +9,7 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'student') {
 }
 
 $student_id = $_SESSION['user']['id'];
-$action = strtolower(trim($_GET['action'] ?? $_POST['action'] ?? 'get_enrolled_courses'));
+$action = strtolower(trim($_GET['action'] ?? $_POST['action'] ?? ''));
 
 function respond($data, $status = 200) {
     http_response_code($status);
@@ -24,9 +17,6 @@ function respond($data, $status = 200) {
     exit();
 }
 
-// =======================================================
-// 📁 File Upload Helper
-// =======================================================
 function handleFileUpload($file, $targetDir = 'uploads/submissions/') {
     if (!isset($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK)
         return ['error' => 'Invalid file upload.'];
@@ -42,15 +32,8 @@ function handleFileUpload($file, $targetDir = 'uploads/submissions/') {
     return ['path' => $targetPath, 'name' => $file['name']];
 }
 
-// =======================================================
-// 🧩 Main Actions
-// =======================================================
 try {
     switch ($action) {
-
-        // =======================================================
-        // 🎟️ 1. Join a Course
-        // =======================================================
         case 'join_course':
         case 'joincourse':
             $code = trim($_POST['access_code'] ?? $_GET['access_code'] ?? '');
@@ -71,9 +54,6 @@ try {
             respond(['success' => true, 'message' => 'Successfully joined course!', 'course' => $course]);
             break;
 
-        // =======================================================
-        // 📚 2. Get Enrolled Courses
-        // =======================================================
         case 'get_enrolled_courses':
         case 'getcourses':
             $stmt = $pdo->prepare("
@@ -90,9 +70,6 @@ try {
             respond(['success' => true, 'courses' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
             break;
 
-        // =======================================================
-        // 📁 3. Get Folders inside a Course
-        // =======================================================
         case 'get_folders':
         case 'getfolders':
             $course_id = $_GET['course_id'] ?? $_POST['course_id'] ?? '';
@@ -108,9 +85,6 @@ try {
             respond(['success' => true, 'folders' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
             break;
 
-        // =======================================================
-        // 📄 4. Get Files inside a Folder
-        // =======================================================
         case 'get_files':
         case 'getfiles':
             $folder_id = $_GET['folder_id'] ?? $_POST['folder_id'] ?? '';
@@ -136,15 +110,11 @@ try {
             respond(['success' => true, 'files' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
             break;
 
-        // =======================================================
-        // 🧷 5. Upload a Submission (Student Upload)
-        // =======================================================
         case 'upload_submission':
             $folder_id = $_POST['folder_id'] ?? '';
             $file = $_FILES['file'] ?? null;
             if (!$folder_id || !$file) respond(['success' => false, 'message' => 'Missing folder_id or file.'], 400);
 
-            // Verify folder access
             $stmt = $pdo->prepare("
                 SELECT f.id AS folder_id, f.course_id 
                 FROM folders f 
@@ -174,9 +144,6 @@ try {
             respond(['success' => true, 'message' => 'File uploaded successfully!', 'submission_id' => $submission_id]);
             break;
 
-        // =======================================================
-        // 📋 6. Get All Student Submissions
-        // =======================================================
         case 'get_submissions':
             $stmt = $pdo->prepare("
                 SELECT 
@@ -192,9 +159,6 @@ try {
             respond(['success' => true, 'submissions' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
             break;
 
-        // =======================================================
-        // ❌ 7. Delete a Submission
-        // =======================================================
         case 'delete_submission':
             $submission_id = $_POST['submission_id'] ?? '';
             if (!$submission_id) respond(['success' => false, 'message' => 'Missing submission_id'], 400);
@@ -211,9 +175,6 @@ try {
             respond(['success' => true, 'message' => 'Submission deleted.']);
             break;
 
-        // =======================================================
-        // 🚫 Default Invalid Action
-        // =======================================================
         default:
             respond(['success' => false, 'message' => 'Invalid or missing action parameter.'], 400);
     }
