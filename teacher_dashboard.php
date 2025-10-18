@@ -126,9 +126,7 @@ body {
     flex-direction: column;
     gap: 1.5rem;
 }
-.right-panel {
-    /* Holds the Folder Contents card */
-}
+
 
 /* Card Styles */
 .card {
