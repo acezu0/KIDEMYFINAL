@@ -174,7 +174,7 @@ try {
             $upload_dir = __DIR__ . '/uploads/';
             if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
 
-            $file_name = preg_replace('/[^A-Za-z0-9_\-\.]/', '_', basename($_FILES['file']['name']));
+            $file_name = preg_replace('/[^A-Za-z0-9_".-\]/', '_', basename($_FILES['file']['name']));
             $target_path = $upload_dir . $file_name;
 
             if (move_uploaded_file($_FILES['file']['tmp_name'], $target_path)) {
@@ -221,3 +221,4 @@ try {
 } catch (Exception $e) {
     respond(['success' => false, 'message' => 'Server error: ' . $e->getMessage()], 500);
 }
+?>
