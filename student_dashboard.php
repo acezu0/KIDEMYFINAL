@@ -901,7 +901,7 @@ function renderSubmissionTable(submissions) {
                 <td>
                     <button 
                         class="submission-action-btn" 
-                        onclick='deleteSubmission(${sub.id}, ${isChecked})'
+                        onclick=\'deleteSubmission(${sub.id}, ${isChecked})\'
                         ${isChecked ? 'disabled' : ''}
                         title="${isChecked ? 'Cannot delete checked submissions.' : 'Delete this submission.'}"
                     >
@@ -923,9 +923,9 @@ async function deleteSubmission(submissionId, isChecked) {
     }
 
     const confirmed = await customConfirm(
-        `Delete Submission`,
-        `Are you sure you want to delete this submission? This action cannot be undone.`,
-        `Delete`
+        'Delete Submission',
+        'Are you sure you want to delete this submission? This action cannot be undone.',
+        'Delete'
     );
 
     if (!confirmed) return;

@@ -126,7 +126,9 @@ body {
     flex-direction: column;
     gap: 1.5rem;
 }
-
+.right-panel {
+    /* Holds the Folder Contents card */
+}
 
 /* Card Styles */
 .card {
@@ -135,6 +137,7 @@ body {
   padding: 1.5rem;
   box-shadow: var(--shadow);
 }
+
 .folder-input-card, .folder-list-card {
     background-color: var(--light-green); /* Light green background for left cards */
 }
