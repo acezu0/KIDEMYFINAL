@@ -3,7 +3,6 @@
 // 🟢 student_api.php — Student Dashboard + File Submission (Final)
 // =======================================================
 require_once 'connect.php';
-session_start();
 header('Content-Type: application/json; charset=utf-8');
 
 // =======================================================

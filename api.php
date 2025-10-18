@@ -1,14 +1,7 @@
 <?php
-// =======================================================
-// 🟢 api.php — Teacher Dashboard Backend (FINAL)
-// =======================================================
 require_once 'connect.php';
-session_start();
 header('Content-Type: application/json; charset=utf-8');
 
-// =======================================================
-// 🔒 Authentication Check
-// =======================================================
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'teacher') {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
@@ -24,15 +17,8 @@ function respond($data, $status = 200) {
     exit();
 }
 
-// =======================================================
-// 🧩 MAIN ACTIONS
-// =======================================================
 try {
     switch ($action) {
-
-        // =======================================================
-        // 📚 1. Create New Course
-        // =======================================================
         case 'create_course':
             $title = trim($_POST['title'] ?? '');
             $description = trim($_POST['description'] ?? '');
@@ -43,7 +29,7 @@ try {
             $stmt = $pdo->prepare("
                 INSERT INTO courses (title, description, teacher_id, access_code, created_at)
                 VALUES (:title, :desc, :tid, substr(md5(random()::text), 1, 8), NOW())
-                RETURNING id, access_code, title, description, created_at
+                RETURNING id, access_code
             ");
             $stmt->execute([':title' => $title, ':desc' => $description, ':tid' => $teacher_id]);
             $course = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -51,9 +37,6 @@ try {
             respond(['success' => true, 'message' => 'Course created successfully!', 'course' => $course]);
             break;
 
-        // =======================================================
-        // 📖 2. Get Teacher’s Courses
-        // =======================================================
         case 'get_courses':
             $stmt = $pdo->prepare("
                 SELECT id, title, description, access_code, created_at
@@ -62,18 +45,38 @@ try {
                 ORDER BY created_at DESC
             ");
             $stmt->execute([':tid' => $teacher_id]);
-            $courses = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            if (empty($courses)) {
-                respond(['success' => true, 'message' => 'No courses found.', 'courses' => []]);
-            }
-
-            respond(['success' => true, 'courses' => $courses]);
+            respond(['success' => true, 'courses' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
             break;
 
-        // =======================================================
-        // 📁 3. Create Folder for a Course
-        // =======================================================
+        case 'enroll_student':
+            $student_email = trim($_POST['student_email'] ?? '');
+            $course_id = trim($_POST['course_id'] ?? '');
+
+            if ($student_email === '' || $course_id === '')
+                respond(['success' => false, 'message' => 'Student email and course are required.'], 400);
+
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = :email AND role = 'student'");
+            $stmt->execute([':email' => $student_email]);
+            $student = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$student)
+                respond(['success' => false, 'message' => 'Student not found.'], 404);
+
+            $student_id = $student['id'];
+
+            $stmt = $pdo->prepare("SELECT id FROM courses WHERE id = :cid AND teacher_id = :tid");
+            $stmt->execute([':cid' => $course_id, ':tid' => $teacher_id]);
+            $course = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$course)
+                respond(['success' => false, 'message' => 'Course not found or you are not the teacher.'], 404);
+
+            $stmt = $pdo->prepare("INSERT INTO enrollments (student_id, course_id) VALUES (:sid, :cid)");
+            $stmt->execute([':sid' => $student_id, ':cid' => $course_id]);
+
+            respond(['success' => true, 'message' => 'Student enrolled successfully!']);
+            break;
+
         case 'create_folder':
             $course_id = $_POST['course_id'] ?? '';
             $name = trim($_POST['name'] ?? '');
@@ -82,7 +85,6 @@ try {
             if ($course_id === '' || $name === '')
                 respond(['success' => false, 'message' => 'Missing course_id or folder name.'], 400);
 
-            // Verify teacher owns the course
             $check = $pdo->prepare("SELECT id FROM courses WHERE id = :cid AND teacher_id = :tid");
             $check->execute([':cid' => $course_id, ':tid' => $teacher_id]);
             if ($check->rowCount() === 0)
@@ -91,7 +93,7 @@ try {
             $stmt = $pdo->prepare("
                 INSERT INTO folders (course_id, name, description, teacher_id, created_at)
                 VALUES (:cid, :name, :desc, :tid, NOW())
-                RETURNING id, name, description, created_at
+                RETURNING id, name, description
             ");
             $stmt->execute([
                 ':cid' => $course_id,
@@ -103,9 +105,6 @@ try {
             respond(['success' => true, 'message' => 'Folder created successfully!', 'folder' => $stmt->fetch(PDO::FETCH_ASSOC)]);
             break;
 
-        // =======================================================
-        // 📂 4. Get Folders in a Course
-        // =======================================================
         case 'get_folders':
             $course_id = $_GET['course_id'] ?? $_POST['course_id'] ?? '';
             if ($course_id === '')
@@ -118,14 +117,9 @@ try {
                 ORDER BY created_at ASC
             ");
             $stmt->execute([':cid' => $course_id]);
-            $folders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            respond(['success' => true, 'folders' => $folders]);
+            respond(['success' => true, 'folders' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
             break;
 
-        // =======================================================
-        // 📤 5. Upload File to a Folder
-        // =======================================================
         case 'upload_file':
             if (!isset($_FILES['file']))
                 respond(['success' => false, 'message' => 'No file uploaded.'], 400);
@@ -134,7 +128,6 @@ try {
             if ($folder_id === '')
                 respond(['success' => false, 'message' => 'Missing folder_id.'], 400);
 
-            // Verify folder ownership
             $check = $pdo->prepare("
                 SELECT f.course_id 
                 FROM folders f 
@@ -172,9 +165,6 @@ try {
             }
             break;
 
-        // =======================================================
-        // 📦 6. Get Files in a Folder
-        // =======================================================
         case 'get_files':
             $folder_id = $_GET['folder_id'] ?? $_POST['folder_id'] ?? '';
             if ($folder_id === '')
@@ -190,9 +180,6 @@ try {
             respond(['success' => true, 'files' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
             break;
 
-        // =======================================================
-        // 🚫 Default Invalid Action
-        // =======================================================
         default:
             respond(['success' => false, 'message' => 'Invalid or missing action.'], 400);
     }
