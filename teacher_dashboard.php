@@ -1,556 +1,462 @@
 <?php
+// teacher_dashboard.php
+// Note: this file expects your session + user to be already set (like your original file).
 session_start();
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'teacher') {
   header('Location: login.php');
   exit;
 }
+
+// Provide your Supabase settings somewhere secure, e.g. in connect.php
+// Example: define('SUPABASE_URL', 'https://xyz.supabase.co'); define('SUPABASE_ANON_KEY', 'public-anon-key');
+require_once 'connect.php'; // should define SUPABASE_URL and SUPABASE_ANON_KEY
+
+// Fallback check to avoid JS errors if not set
+$supabase_url = defined('SUPABASE_URL') ? SUPABASE_URL : '';
+$supabase_anon = defined('SUPABASE_ANON_KEY') ? SUPABASEeyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5aW9zZnJqc2Jya2NzeW54dGt2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyOTA0OTcsImV4cCI6MjA3NDg2NjQ5N30.Yc08sv62N1Xi3uKpD5bMjqC6s5LRlgmneDRk8AmqCCo_ANON_KEY : '';
+
+// teacher info from session
+$teacher_id = (int)($_SESSION['user']['id'] ?? 0);
+$teacher_name = htmlspecialchars($_SESSION['user']['name'] ?? 'Teacher');
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Teacher Dashboard | Kidemy</title>
-<!-- Google Fonts: Poppins (Used for the Kidemy theme) -->
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght @300;400;600;700&display=swap" rel="stylesheet">
-<!-- Ensure the link to your existing CSS remains if you have custom styles there -->
-<link rel="stylesheet" href="kidemy.css"> 
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="kidemy.css">
 <style>
-/* Base Styles */
-body {
-  margin: 0;
-  font-family: "Poppins", sans-serif;
-  background: #f4f6f9;
-  color: #333;
-}
-:root {
-    --kidemy-green: #006c4f;
-    --light-green: #eaf8f4; /* Light background for inner cards */
-    --text-color: #333;
-    --border-radius: 12px;
-    --shadow: 0 4px 12px rgba(0,0,0,0.08);
-}
-
-/* Sidebar Styles */
-.sidebar {
-  width: 240px;
-  background-color: white; /* Changed to white background for modern look like screenshot */
-  height: 100vh;
-  position: fixed;
-  top: 0;
-  left: 0;
-  color: var(--text-color);
-  display: flex;
-  flex-direction: column;
-  z-index: 1000;
-  transition: transform 0.3s ease-in-out;
-  box-shadow: 2px 0 5px rgba(0,0,0,0.05);
-}
-.sidebar h2 {
-  text-align: left;
-  padding: 1rem 1.5rem;
-  font-weight: 700;
-  margin: 0;
-  color: var(--kidemy-green);
-  font-size: 1.5rem;
-}
-.sidebar .user-info {
-    padding: 0.5rem 1.5rem 1.5rem;
-    color: #666;
-    font-size: 0.9rem;
-    border-bottom: 1px solid #eee;
-    margin-bottom: 1.5rem;
-}
-.sidebar a {
-  color: var(--text-color);
-  padding: 0.8rem 1.5rem;
-  text-decoration: none;
-  display: block;
-  font-weight: 600;
-  margin: 0 1rem;
-  border-radius: 8px;
-  transition: background-color 0.2s, color 0.2s;
-}
-.sidebar a.active, .sidebar a:hover {
-  background-color: var(--kidemy-green);
-  color: white;
-}
-.sidebar a.logout {
-    margin-top: auto; /* Push logout to the bottom */
-    margin-bottom: 2rem;
-    background-color: #f8d7da;
-    color: #842029;
-}
-.sidebar a.logout:hover {
-    background-color: #dc3545;
-    color: white;
-}
-
-
-/* Main Content Area */
-.main {
-  margin-left: 240px;
-  padding: 0 2rem 2rem 2rem;
-  transition: margin-left 0.3s ease-in-out;
-}
-.header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 0;
-    margin-bottom: 1.5rem;
-    border-bottom: 1px solid #eee;
-}
-.header h1 {
-    font-weight: 700;
-    color: var(--text-color);
-    margin: 0;
-    font-size: 1.8rem;
-}
-.header .welcome-text {
-    background-color: var(--light-green);
-    color: var(--kidemy-green);
-    padding: 8px 15px;
-    border-radius: 6px;
-    font-weight: 600;
-}
-
-/* Manager Grid Layout (The main UI from the screenshot) */
-.manager-grid {
-    display: grid;
-    grid-template-columns: 3fr 7fr; /* Left column narrower, right column wider */
-    gap: 2rem;
-}
-.left-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-}
-.right-panel {
-    /* Holds the Folder Contents card */
-}
-
-/* Card Styles */
-.card {
-  background: white;
-  border-radius: var(--border-radius);
-  padding: 1.5rem;
-  box-shadow: var(--shadow);
-}
-
-.folder-input-card, .folder-list-card {
-    background-color: var(--light-green); /* Light green background for left cards */
-}
-
-.input-group label {
-    display: block;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-}
-.input-group input {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    box-sizing: border-box;
-    margin-bottom: 1rem;
-}
-
-/* Buttons */
-.btn {
-  background-color: var(--kidemy-green);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 0.75rem 1.25rem;
-  cursor: pointer;
-  font-weight: 600;
-  transition: background-color 0.2s, transform 0.1s;
-}
-.btn:hover {
-  background-color: #018a66;
-  transform: translateY(-1px);
-}
-.btn.add-btn {
-    margin-bottom: 1.5rem;
-}
-
-/* Folder List Item Styles */
-.folder-item {
-    background-color: white;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 10px;
-    cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    transition: background-color 0.2s, transform 0.1s;
-    border-left: 5px solid transparent;
-}
-.folder-item:hover {
-    background-color: #fff;
-    border-left: 5px solid #00c087; /* Brighter green hover border */
-}
-.folder-item.active {
-    border-left: 5px solid var(--kidemy-green);
-    background-color: #fff;
-}
-.folder-item h4 {
-    margin: 0;
-    font-weight: 600;
-    color: var(--kidemy-green);
-}
-.folder-item small {
-    color: #666;
-    font-size: 0.8rem;
-}
-
-
-/* Course List View Styles (Used when view is 'courses') */
-#courseList {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1.5rem;
-}
-.course-card {
-    border-left: 5px solid var(--kidemy-green);
-    padding: 1.5rem;
-}
-.course-card h3 {
-    color: var(--kidemy-green);
-}
-
-/* Mobile Adjustments */
-.menu-toggle {
-    display: none;
-    position: fixed;
-    top: 15px;
-    left: 15px;
-    z-index: 1001; 
-    background: var(--kidemy-green);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 10px 15px;
-    font-size: 1.2rem;
-    cursor: pointer;
-}
-
- @media (max-width: 900px) {
-  .sidebar { 
-    transform: translateX(-240px);
-  }
-  .sidebar.open {
-    transform: translateX(0);
-  }
-  .main { 
-    margin-left: 0; 
-    padding: 1rem; 
-  }
-  .menu-toggle {
-    display: block; 
-  }
-  .header {
-      margin-top: 50px; /* Space for the fixed menu button */
-  }
-  .manager-grid {
-    grid-template-columns: 1fr; /* Stack columns */
-    gap: 1.5rem;
-  }
-}
+/* --- keep your previous styles, plus toast & quick-access adjustments --- */
+body{margin:0;font-family:"Poppins",sans-serif;background:#f4f6f9;color:#333}
+:root{--kidemy-green:#006c4f;--light-green:#eaf8f4;--text-color:#333;--border-radius:12px;--shadow:0 4px 12px rgba(0,0,0,0.08)}
+/* ... (paste the full CSS you already had) ... */
+/* Additions for Quick Access grid & toasts */
+.quick-access-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.qa-card{background:#fff;border-radius:12px;padding:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px}
+.qa-card .meta{font-size:0.85rem;color:#666}
+.recent-list{display:flex;flex-direction:column;gap:8px}
+.recent-item{background:#fff;border-radius:10px;padding:10px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+/* Toast container */
+.toast-container{position:fixed;right:20px;bottom:20px;z-index:2000;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+.toast{min-width:220px;padding:12px 14px;border-radius:10px;color:#fff;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,0.12);transform:translateY(0);opacity:1;transition:transform .25s,opacity .25s}
+.toast.success{background:linear-gradient(90deg,#28a745,#1c7a3a)}
+.toast.error{background:linear-gradient(90deg,#dc3545,#b02a37)}
+.toast.info{background:linear-gradient(90deg,#0d6efd,#084ea6)}
+/* Keep rest of your CSS... */
 </style>
 </head>
 <body>
 
-<!-- Mobile Menu Toggle Button -->
+<!-- Mobile Menu Toggle -->
 <button class="menu-toggle" onclick="toggleSidebar()">☰ Menu</button>
 
 <div class="sidebar" id="sidebar">
   <h2>KIDEMY</h2>
   <div class="user-info">
-      Hello, <b><?php echo htmlspecialchars($_SESSION['user']['name']); ?>!</b><br>
+      Hello, <b><?php echo $teacher_name; ?>!</b><br>
       Role: Teacher
   </div>
-  <!-- Menu Items - Lesson Manager is active by default -->
   <a href="#" class="nav-link active" data-view="lessons" onclick="switchView('lessons', this)">📁 Lesson Manager</a>
   <a href="#" class="nav-link" data-view="courses" onclick="switchView('courses', this)">📘 My Courses</a>
   <a href="logout.php" class="logout">🚪 Sign Out</a>
 </div>
 
 <div class="main">
-  
   <div class="header">
       <h1 id="mainTitle">Lesson Manager</h1>
-      <div class="welcome-text">Welcome, <?php echo htmlspecialchars($_SESSION['user']['name']); ?>!</div>
+      <div class="welcome-text">Welcome, <?php echo $teacher_name; ?>!</div>
   </div>
 
-  <!-- Lesson Manager View Container -->
+  <!-- LESSON MANAGER -->
   <div id="lessonManagerView" class="dashboard-view manager-grid">
-    
     <div class="left-panel">
-        <!-- 1. Create New Lesson Folder Card -->
-        <div class="card folder-input-card">
-            <h3>Create New Lesson Folder</h3>
-            <div class="input-group">
-                <label for="folderName">Folder/Lesson Name</label>
-                <input type="text" id="folderName" placeholder="e.g., 'Algebra Unit 1'" maxlength="100">
-                <button class="btn" onclick="createFolder()">Create Folder</button>
-            </div>
+      <div class="card folder-input-card">
+        <h3>Create New Lesson Folder</h3>
+        <div class="input-group">
+          <label for="folderName">Folder/Lesson Name</label>
+          <input type="text" id="folderName" placeholder="e.g., 'Algebra Unit 1'" maxlength="100">
+          <select id="folderCourseSelect" style="width:100%;padding:10px;border-radius:6px;border:1px solid #ccc;margin-bottom:10px;">
+            <option value="">Select course (optional)</option>
+          </select>
+          <button class="btn" onclick="createFolder()">Create Folder</button>
         </div>
-        
-        <!-- 2. Lesson Folders List Card -->
-        <div class="card folder-list-card">
-            <h3>Lesson Folders</h3>
-            <div id="folderList">
-                <p style="color: #666; margin: 0;">Loading folders...</p>
-            </div>
+      </div>
+
+      <div class="card folder-list-card">
+        <h3>Lesson Folders</h3>
+        <div id="folderList">
+          <p style="color:#666;margin:0;">Loading folders...</p>
         </div>
+      </div>
     </div>
-    
-    <!-- 3. Folder Contents Card (Right Panel) -->
+
+    <!-- RIGHT PANEL: Folder Contents + Quick Access -->
     <div class="right-panel">
-        <div class="card" style="height: 100%; min-height: 400px;">
-            <h3>Folder Contents</h3>
-            <div id="folderContents">
-                <p style="color: #666; font-style: italic;">Select a folder to see its contents, or create a new folder above.</p>
-            </div>
+      <div class="card" style="min-height:220px;">
+        <h3>Folder Contents</h3>
+        <div id="folderContents">
+          <p style="color:#666;font-style:italic">Select a folder to see its contents, or create a new folder above.</p>
         </div>
+      </div>
+
+      <!-- Quick Access / Recently Edited design panel -->
+      <div style="height:18px"></div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <h3 style="margin:0">Quick Access</h3>
+          <small style="color:#666">Your pinned & recent items</small>
+        </div>
+
+        <div class="quick-access-grid" id="quickAccessGrid">
+          <!-- JS will populate quick access cards here -->
+        </div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid #eee" />
+        <h4 style="margin:8px 0">Recently Edited</h4>
+        <div class="recent-list" id="recentList">
+          <!-- JS will populate recent files/folders -->
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Course View Container (Initially hidden) -->
-  <div id="courseView" class="dashboard-view" style="display: none;">
+  <!-- COURSE VIEW -->
+  <div id="courseView" class="dashboard-view" style="display:none">
     <button class="btn add-btn" id="addCourseBtn">➕ Add New Course</button>
     <div id="courseList">Loading courses...</div>
   </div>
-
 </div>
 
+<!-- Toasts -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Supabase CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
 <script>
-// --- GLOBAL STATE & MOCK DATA ---
-// Removed the mockFolders array. Folders will now load empty unless previously saved in localStorage.
-const EMPTY_FOLDERS = []; 
-let activeFolderId = null;
-const TODO_STORAGE_KEY = 'kidemyTeacherFolders';
+// Injected server-side variables
+const SUPABASE_URL = "<?php echo addslashes($supabase_url); ?>";
+const SUPABASE_ANON_KEY = "<?php echo addslashes($supabase_anon); ?>";
+const TEACHER_ID = <?php echo json_encode($teacher_id); ?>;
+const TEACHER_NAME = "<?php echo addslashes($teacher_name); ?>";
 
-// --- UTILITIES AND DATA MANAGEMENT ---
-
-function getFolders() {
-    try {
-        const stored = localStorage.getItem(TODO_STORAGE_KEY);
-        // If nothing is stored, return the empty array, not mockFolders
-        return stored ? JSON.parse(stored) : EMPTY_FOLDERS;
-    } catch (e) {
-        console.error("Error loading folders from localStorage:", e);
-        return EMPTY_FOLDERS;
-    }
+// Basic guard
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('Supabase credentials not set. Please define SUPABASE_URL and SUPABASE_ANON_KEY in connect.php');
+  // Optionally show toast
+  showToast('Supabase credentials missing (server-side).', 'error');
 }
 
-function saveFolders(folders) {
-    try {
-        localStorage.setItem(TODO_STORAGE_KEY, JSON.stringify(folders));
-    } catch (e) {
-        console.error("Error saving folders to localStorage:", e);
-    }
+const supabase = supabasejs.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// --- Toast helper ---
+function showToast(message, type = 'success', timeout = 3000) {
+  const container = document.getElementById('toastContainer');
+  const div = document.createElement('div');
+  div.className = `toast ${type}`;
+  div.textContent = message;
+  container.appendChild(div);
+  setTimeout(() => {
+    div.style.opacity = '0';
+    div.style.transform = 'translateY(12px)';
+    setTimeout(() => container.removeChild(div), 300);
+  }, timeout);
 }
 
-// --- UI HELPERS ---
+// --- Sidebar toggles & view switching ---
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open')}
 
-function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    sidebar.classList.toggle('open');
+function switchView(viewName, element){
+  document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('active'));
+  if (element) element.classList.add('active');
+  document.getElementById('lessonManagerView').style.display = viewName === 'lessons' ? 'grid' : 'none';
+  document.getElementById('courseView').style.display = viewName === 'courses' ? 'block' : 'none';
+  document.getElementById('mainTitle').textContent = viewName === 'lessons' ? 'Lesson Manager' : 'My Courses';
+  if (viewName === 'courses') loadCourses(); else renderFolderList();
+  if (window.innerWidth <= 900) document.getElementById('sidebar').classList.remove('open');
 }
 
-/**
- * Switches the main content view between 'courses' and 'lessons'.
- * @param {string} viewName - 'courses' or 'lessons'.
- * @param {HTMLElement} element - The clicked navigation link element.
- */
-function switchView(viewName, element) {
-    // 1. Toggle Active Link
-    document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
-    element.classList.add('active');
-
-    // 2. Toggle View Containers
-    const lessonView = document.getElementById('lessonManagerView');
-    const courseView = document.getElementById('courseView');
-    
-    lessonView.style.display = viewName === 'lessons' ? 'grid' : 'none';
-    courseView.style.display = viewName === 'courses' ? 'block' : 'none';
-
-    // 3. Update Title
-    document.getElementById('mainTitle').textContent = viewName === 'lessons' ? 'Lesson Manager' : 'My Courses';
-
-    // 4. Load Data
-    if (viewName === 'courses') {
-        loadCourses();
-    } else {
-        renderFolderList();
-    }
-    
-    // Close sidebar on mobile after switching
-    if (window.innerWidth <= 900) {
-        document.getElementById('sidebar').classList.remove('open');
-    }
-}
-
-// --- LESSON MANAGER LOGIC (Mocked with LocalStorage) ---
-
-function renderFolderList() {
-    const container = document.getElementById('folderList');
-    const folders = getFolders();
-    container.innerHTML = '';
-
-    if (folders.length === 0) {
-        container.innerHTML = '<p style="color: #666; margin: 0;">No folders yet. Create your first one above!</p>';
-        return;
-    }
-
-    folders.forEach(folder => {
-        const div = document.createElement('div');
-        div.className = `folder-item ${folder.id === activeFolderId ? 'active' : ''}`;
-        div.innerHTML = `
-            <h4 style="display: flex; align-items: center; gap: 5px;"><span style="font-size: 1.2rem;">&#128193;</span> ${folder.name}</h4>
-            <small>Created: ${folder.created}</small>
-        `;
-        div.onclick = () => selectFolder(folder.id, folder.name);
-        container.appendChild(div);
-    });
-}
-
-function createFolder() {
-    const input = document.getElementById('folderName');
-    const name = input.value.trim();
-
-    if (name === '') {
-        alert('Please enter a folder name.');
-        return;
-    }
-
-    const folders = getFolders();
-    const newFolder = {
-        id: Date.now().toString(),
-        name: name,
-        created: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) // Matches 10/11/2025 format
-    };
-
-    folders.unshift(newFolder); // Add to the top
-    saveFolders(folders);
-    input.value = '';
-    renderFolderList();
-    
-    // Optionally select the newly created folder
-    selectFolder(newFolder.id, newFolder.name);
-}
-
-function selectFolder(id, name) {
-    activeFolderId = id;
-    renderFolderList(); // Re-render to highlight the active folder
-
-    const contentsDiv = document.getElementById('folderContents');
-    contentsDiv.innerHTML = `
-        <h4 style="color: var(--kidemy-green);">${name} Contents</h4>
-        <p style="margin-bottom: 20px;">This is where the list of files and materials for the folder **${name}** would appear.</p>
-        <button class="btn" style="background-color: #ffc107; color: var(--text-color);" onclick="uploadMaterial('${id}')">Upload Material to This Folder</button>
-        <div style="margin-top: 20px; padding: 10px; border: 1px dashed #ccc; border-radius: 8px;">
-            <p style="font-size: 0.9rem; margin: 0;">Mock File List (1 PDF, 2 DOCs):</p>
-            <ul style="list-style-type: none; padding: 0; margin: 10px 0 0 0;">
-                <li>&#128196; Reading Guide.pdf</li>
-                <li>&#128195; Worksheet 1.docx</li>
-                <li>&#128195; Homework Key.docx</li>
-            </ul>
-        </div>
-    `;
-}
-
-function uploadMaterial(folderId) {
-    // This function would open a real upload modal/form
-    alert(`Initiating upload process for Folder ID: ${folderId}. 
-
-(A real application would show a robust file upload form here.)`);
-}
-
-// --- COURSE MANAGEMENT LOGIC (From previous state) ---
+// --- Data functions: Courses / Folders / Files ---
 
 async function loadCourses() {
-    const container = document.getElementById('courseList');
-    container.innerHTML = 'Loading courses...';
-
-    try {
-        const res = await fetch('api.php?action=get_courses', { credentials: 'include' });
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        
-        const data = await res.json();
-
-        if (!data.success) {
-            container.innerHTML = `<p style="color: red;">Error loading courses: ${data.message || 'Unknown API error.'}</p>`;
-            return;
-        }
-
-        if (data.courses.length === 0) {
-            container.innerHTML = '<p>No courses yet. Click “Add New Course” to start one!</p>';
-            return;
-        }
-
-        container.innerHTML = ''; 
-        data.courses.forEach(course => {
-            const div = document.createElement('div');
-            div.className = 'card course-card';
-            div.innerHTML = `
-                <h3 style="font-weight: 600;">${course.title}</h3>
-                <p style="margin: 0.5rem 0 1rem;">${course.description || 'No description provided.'}</p>
-                <small style="color: #666;">Access code: <b>${course.access_code}</b></small>
-                <button class="btn" style="margin-top: 1rem;" onclick="openCourse(${course.id})">Open Course</button>
-            `;
-            container.appendChild(div);
-        });
-    } catch (error) {
-        console.error("Fetch error:", error);
-        container.innerHTML = `<p style="color: red;">Could not connect to the API. Check console for details.</p>`;
+  const container = document.getElementById('courseList');
+  container.innerHTML = 'Loading courses...';
+  try {
+    const { data, error } = await supabase
+      .from('courses')
+      .select('id,title,description,access_code,created_at')
+      .eq('teacher_id', TEACHER_ID)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p>No courses yet. Click “Add New Course” to start one!</p>';
+      populateCourseSelect([]);
+      return;
     }
+    container.innerHTML = '';
+    populateCourseSelect(data);
+    data.forEach(course => {
+      const div = document.createElement('div');
+      div.className = 'card course-card';
+      div.innerHTML = `
+        <h3 style="font-weight:600">${escapeHtml(course.title)}</h3>
+        <p style="margin:0.5rem 0 1rem">${escapeHtml(course.description || 'No description provided.')}</p>
+        <small style="color:#666">Access code: <b>${escapeHtml(course.access_code || '')}</b></small>
+        <div style="margin-top:10px">
+          <button class="btn" onclick="openCourse(${course.id})">Open Course</button>
+          <button class="btn" style="background:#ffc107;color:#222;margin-left:8px" onclick="loadFoldersForCourse(${course.id})">View Folders</button>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = `<p style="color:red">Error loading courses. Check console.</p>`;
+    showToast('Could not load courses', 'error');
+  }
 }
 
+function populateCourseSelect(courses) {
+  const sel = document.getElementById('folderCourseSelect');
+  sel.innerHTML = '<option value="">Select course (optional)</option>';
+  courses.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.title;
+    sel.appendChild(opt);
+  });
+}
+
+// Create course (prompt modal replaced by simple prompt for now)
 document.getElementById('addCourseBtn').addEventListener('click', async () => {
-    // NOTE: This uses the browser's native prompt/alert for simplicity, 
-    // but should be replaced with a custom modal in a real application.
-    const title = prompt('Enter course title:');
-    if (!title || title.trim() === '') return;
-    const desc = prompt('Enter description (optional):') || '';
-
-    try {
-        const formData = new FormData();
-        formData.append('action', 'create_course');
-        formData.append('title', title);
-        formData.append('description', desc);
-
-        const res = await fetch('api.php', { method: 'POST', body: formData, credentials: 'include' });
-        const data = await res.json();
-        
-        // Using alert as a quick-fix for API interaction confirmation
-        if (data.success) {
-            alert(`Course created successfully: ${data.message}`);
-        } else {
-             alert(`Failed to create course: ${data.message}`);
-        }
-    } catch (error) {
-         alert('Error connecting to the server.');
-        console.error("Course creation error:", error);
-    }
-    
+  const title = prompt('Enter course title:');
+  if (!title || !title.trim()) return;
+  const description = prompt('Enter description (optional):') || '';
+  try {
+    const { data, error } = await supabase
+      .from('courses')
+      .insert([{ title: title.trim(), description: description.trim(), teacher_id: TEACHER_ID, access_code: generateAccessCode() }])
+      .select()
+      .single();
+    if (error) throw error;
+    showToast('Course created successfully', 'success');
     loadCourses();
+    // update Quick Access
+    refreshQuickAccess();
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to create course', 'error');
+  }
 });
 
-function openCourse(id) {
-    window.location.href = 'teacher_course.php?id=' + id;
+function generateAccessCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i=0;i<6;i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return s;
 }
 
-// --- STARTUP ---
-document.addEventListener('DOMContentLoaded', () => {
-    // Start by rendering the Lesson Manager (the default view)
-    renderFolderList();
+function openCourse(id) {
+  window.location.href = 'teacher_course.php?id=' + id;
+}
 
-    // Set the initial active class on the Lesson Manager link
-    document.querySelector('.nav-link[data-view="lessons"]').classList.add('active');
+// --- FOLDERS ---
+async function renderFolderList() {
+  const container = document.getElementById('folderList');
+  container.innerHTML = 'Loading...';
+  try {
+    // Get all folders for this teacher (optionally show only recent)
+    const { data, error } = await supabase
+      .from('folders')
+      .select('id,name,description,created_at,course_id')
+      .eq('teacher_id', TEACHER_ID)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p style="color:#666;margin:0;">No folders yet. Create your first one above!</p>';
+      return;
+    }
+    container.innerHTML = '';
+    data.forEach(folder => {
+      const div = document.createElement('div');
+      div.className = `folder-item ${folder.id === activeFolderId ? 'active' : ''}`;
+      div.innerHTML = `
+        <h4 style="display:flex;align-items:center;gap:8px"><span style="font-size:1.2rem">&#128193;</span> ${escapeHtml(folder.name)}</h4>
+        <small>Created: ${new Date(folder.created_at).toLocaleDateString()}</small>
+      `;
+      div.onclick = () => selectFolder(folder.id, folder.name);
+      container.appendChild(div);
+    });
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = '<p style="color:red">Failed to load folders.</p>';
+    showToast('Failed to load folders', 'error');
+  }
+}
+
+async function createFolder() {
+  const name = document.getElementById('folderName').value.trim();
+  const courseId = document.getElementById('folderCourseSelect').value || null;
+  if (!name) { showToast('Please enter a folder name', 'error'); return; }
+  try {
+    const payload = { name, teacher_id: TEACHER_ID, course_id: courseId };
+    const { data, error } = await supabase.from('folders').insert([payload]).select().single();
+    if (error) throw error;
+    document.getElementById('folderName').value = '';
+    renderFolderList();
+    showToast('Folder created', 'success');
+    // show newly created folder contents
+    selectFolder(data.id, data.name);
+    refreshQuickAccess();
+  } catch (err) {
+    console.error(err);
+    showToast('Could not create folder', 'error');
+  }
+}
+
+let activeFolderId = null;
+function selectFolder(id, name) {
+  activeFolderId = id;
+  renderFolderList();
+  renderFolderContents(id, name);
+}
+
+async function loadFoldersForCourse(courseId) {
+  try {
+    const { data, error } = await supabase.from('folders').select('id,name,created_at').eq('course_id', courseId).order('created_at', { ascending:false });
+    if (error) throw error;
+    // show these in folderList temporarily
+    const container = document.getElementById('folderList');
+    container.innerHTML = '';
+    data.forEach(folder => {
+      const div = document.createElement('div');
+      div.className = 'folder-item';
+      div.innerHTML = `<h4>&#128193; ${escapeHtml(folder.name)}</h4><small>Created: ${new Date(folder.created_at).toLocaleDateString()}</small>`;
+      div.onclick = () => selectFolder(folder.id, folder.name);
+      container.appendChild(div);
+    });
+    showToast('Folders loaded for course', 'info');
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to load folders for course', 'error');
+  }
+}
+
+// --- Folder contents & file uploads ---
+async function renderFolderContents(folderId, folderName) {
+  const contentsDiv = document.getElementById('folderContents');
+  contentsDiv.innerHTML = `<h4 style="color:var(--kidemy-green)">${escapeHtml(folderName)} Contents</h4>
+    <div style="margin-bottom:12px">Upload files to this folder</div>
+    <input type="file" id="fileUpload" multiple style="margin-bottom:8px">
+    <button class="btn" onclick="uploadMaterial()">Upload Selected Files</button>
+    <div id="fileList" style="margin-top:16px"></div>
+  `;
+  loadFiles(folderId);
+}
+
+async function uploadMaterial() {
+  const input = document.getElementById('fileUpload');
+  if (!input || input.files.length === 0) { showToast('Please choose files to upload', 'error'); return; }
+  if (!activeFolderId) { showToast('Select a folder first', 'error'); return; }
+
+  const files = Array.from(input.files);
+  showToast(`Uploading ${files.length} file(s)...`, 'info', 2000);
+
+  try {
+    for (const file of files) {
+      // create a unique path
+      const uniqueName = `${Date.now()}_${sanitizeFilename(file.name)}`;
+      const { data:uploadData, error:uploadErr } = await supabase.storage.from('uploads').upload(uniqueName, file);
+      if (uploadErr) throw uploadErr;
+
+      // get public url (or you can set up signed urls)
+      const { data: publicData } = supabase.storage.from('uploads').getPublicUrl(uniqueName);
+
+      // record metadata in files table
+      const { error: insertErr } = await supabase.from('files').insert([{
+        folder_id: activeFolderId,
+        course_id: null,
+        file_name: file.name,
+        file_path: publicData.publicUrl,
+        uploaded_by: TEACHER_ID
+      }]);
+
+      if (insertErr) throw insertErr;
+    }
+
+    input.value = '';
+    showToast('Upload(s) complete', 'success');
+    loadFiles(activeFolderId);
+    refreshQuickAccess();
+  } catch (err) {
+    console.error(err);
+    showToast('File upload failed', 'error');
+  }
+}
+
+async function loadFiles(folderId) {
+  const listDiv = document.getElementById('fileList');
+  listDiv.innerHTML = 'Loading files...';
+  try {
+    const { data, error } = await supabase.from('files').select('id,file_name,file_path,uploaded_at').eq('folder_id', folderId).order('uploaded_at', { ascending: false });
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      listDiv.innerHTML = '<p style="color:#666">No uploaded materials yet.</p>';
+      return;
+    }
+    listDiv.innerHTML = '<ul style="list-style:none;padding:0;margin:0">' + data.map(f => `<li style="padding:8px 0">&#128196; <a href="${escapeHtml(f.file_path)}" target="_blank">${escapeHtml(f.file_name)}</a> <small style="color:#666;margin-left:8px">${new Date(f.uploaded_at).toLocaleString()}</small></li>`).join('') + '</ul>';
+  } catch (err) {
+    console.error(err);
+    listDiv.innerHTML = '<p style="color:red">Failed to load files.</p>';
+    showToast('Failed to load files', 'error');
+  }
+}
+
+// --- Quick Access & Recently Edited UI ---
+async function refreshQuickAccess() {
+  try {
+    // get some pinned/frequency items (for demo: top 6 recent folders + files)
+    const { data:folders } = await supabase.from('folders').select('id,name,created_at').eq('teacher_id', TEACHER_ID).order('created_at', { ascending:false }).limit(4);
+    const { data:files } = await supabase.from('files').select('id,file_name,file_path,uploaded_at').eq('uploaded_by', TEACHER_ID).order('uploaded_at', { ascending:false }).limit(6);
+
+    const qa = document.getElementById('quickAccessGrid');
+    qa.innerHTML = '';
+    (folders||[]).forEach(f => {
+      const card = document.createElement('div');
+      card.className = 'qa-card';
+      card.innerHTML = `<strong>${escapeHtml(f.name)}</strong><div class="meta">Folder · ${new Date(f.created_at).toLocaleDateString()}</div>`;
+      card.onclick = () => selectFolder(f.id, f.name);
+      qa.appendChild(card);
+    });
+
+    const recent = document.getElementById('recentList');
+    recent.innerHTML = '';
+    (files||[]).forEach(f => {
+      const item = document.createElement('div');
+      item.className = 'recent-item';
+      item.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><span style="font-size:1.2rem">&#128196;</span><div><div style="font-weight:600">${escapeHtml(f.file_name)}</div><div style="font-size:0.85rem;color:#666">${new Date(f.uploaded_at).toLocaleString()}</div></div></div><a href="${escapeHtml(f.file_path)}" target="_blank" class="btn" style="background:#f1f1f1;color:#222">Open</a>`;
+      recent.appendChild(item);
+    });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// --- Utilities ---
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function sanitizeFilename(n){ return n.replace(/[^A-Za-z0-9_\-\.]/g,'_'); }
+function activeOrNull(v){ return v ? v : null; }
+
+// Initial load
+document.addEventListener('DOMContentLoaded', () => {
+  // initial content
+  renderFolderList();
+  loadCourses();
+  refreshQuickAccess();
+  document.querySelector('.nav-link[data-view="lessons"]').classList.add('active');
 });
 </script>
 </body>

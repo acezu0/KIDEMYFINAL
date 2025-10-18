@@ -901,7 +901,7 @@ function renderSubmissionTable(submissions) {
                 <td>
                     <button 
                         class="submission-action-btn" 
-                        onclick=\'deleteSubmission(${sub.id}, ${isChecked})\'
+                        onclick=`deleteSubmission(${sub.id}, ${isChecked ? 'true' : 'false'})`
                         ${isChecked ? 'disabled' : ''}
                         title="${isChecked ? 'Cannot delete checked submissions.' : 'Delete this submission.'}"
                     >
