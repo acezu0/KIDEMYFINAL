@@ -1,22 +1,25 @@
 <?php
-// teacher_dashboard.php
-// Note: this file expects your session + user to be already set (like your original file).
 session_start();
+
+// ✅ Prevent duplicate session warning
+if (session_status() === PHP_SESSION_NONE) {
+  session_start();
+}
+
+// ✅ Only teachers allowed
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'teacher') {
   header('Location: login.php');
   exit;
 }
 
-// Provide your Supabase settings somewhere secure, e.g. in connect.php
-// Example: define('SUPABASE_URL', 'https://xyz.supabase.co'); define('SUPABASE_ANON_KEY', 'public-anon-key');
-require_once 'connect.php'; // should define SUPABASE_URL and SUPABASE_ANON_KEY
+// ✅ Secure Supabase credentials (set once in connect.php)
+require_once 'connect.php'; 
 
-// Fallback check to avoid JS errors if not set
-$supabase_url = defined('SUPABASE_URL') ? SUPABASE_URL : '';
-$supabase_anon = defined('SUPABASE_ANON_KEY') ? SUPABASEeyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5aW9zZnJqc2Jya2NzeW54dGt2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyOTA0OTcsImV4cCI6MjA3NDg2NjQ5N30.Yc08sv62N1Xi3uKpD5bMjqC6s5LRlgmneDRk8AmqCCo_ANON_KEY : '';
+$supabase_url  = defined('SUPABASE_URL') ? SUPABASE_URL : '';
+$supabase_anon = defined('SUPABASE_ANON_KEY') ? SUPABASE_ANON_KEY : '';
 
-// teacher info from session
-$teacher_id = (int)($_SESSION['user']['id'] ?? 0);
+// ✅ Teacher info
+$teacher_id   = $_SESSION['user']['id'] ?? '';
 $teacher_name = htmlspecialchars($_SESSION['user']['name'] ?? 'Teacher');
 ?>
 <!DOCTYPE html>
@@ -27,36 +30,32 @@ $teacher_name = htmlspecialchars($_SESSION['user']['name'] ?? 'Teacher');
 <title>Teacher Dashboard | Kidemy</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="kidemy.css">
+
 <style>
-/* --- keep your previous styles, plus toast & quick-access adjustments --- */
 body{margin:0;font-family:"Poppins",sans-serif;background:#f4f6f9;color:#333}
 :root{--kidemy-green:#006c4f;--light-green:#eaf8f4;--text-color:#333;--border-radius:12px;--shadow:0 4px 12px rgba(0,0,0,0.08)}
-/* ... (paste the full CSS you already had) ... */
-/* Additions for Quick Access grid & toasts */
 .quick-access-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
 .qa-card{background:#fff;border-radius:12px;padding:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px}
 .qa-card .meta{font-size:0.85rem;color:#666}
 .recent-list{display:flex;flex-direction:column;gap:8px}
 .recent-item{background:#fff;border-radius:10px;padding:10px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
-/* Toast container */
 .toast-container{position:fixed;right:20px;bottom:20px;z-index:2000;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
 .toast{min-width:220px;padding:12px 14px;border-radius:10px;color:#fff;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,0.12);transform:translateY(0);opacity:1;transition:transform .25s,opacity .25s}
 .toast.success{background:linear-gradient(90deg,#28a745,#1c7a3a)}
 .toast.error{background:linear-gradient(90deg,#dc3545,#b02a37)}
 .toast.info{background:linear-gradient(90deg,#0d6efd,#084ea6)}
-/* Keep rest of your CSS... */
 </style>
 </head>
-<body>
 
-<!-- Mobile Menu Toggle -->
+<body>
+<!-- Sidebar -->
 <button class="menu-toggle" onclick="toggleSidebar()">☰ Menu</button>
 
 <div class="sidebar" id="sidebar">
   <h2>KIDEMY</h2>
   <div class="user-info">
-      Hello, <b><?php echo $teacher_name; ?>!</b><br>
-      Role: Teacher
+    Hello, <b><?php echo $teacher_name; ?></b><br>
+    Role: Teacher
   </div>
   <a href="#" class="nav-link active" data-view="lessons" onclick="switchView('lessons', this)">📁 Lesson Manager</a>
   <a href="#" class="nav-link" data-view="courses" onclick="switchView('courses', this)">📘 My Courses</a>
@@ -65,8 +64,8 @@ body{margin:0;font-family:"Poppins",sans-serif;background:#f4f6f9;color:#333}
 
 <div class="main">
   <div class="header">
-      <h1 id="mainTitle">Lesson Manager</h1>
-      <div class="welcome-text">Welcome, <?php echo $teacher_name; ?>!</div>
+    <h1 id="mainTitle">Lesson Manager</h1>
+    <div class="welcome-text">Welcome, <?php echo $teacher_name; ?>!</div>
   </div>
 
   <!-- LESSON MANAGER -->
@@ -74,389 +73,502 @@ body{margin:0;font-family:"Poppins",sans-serif;background:#f4f6f9;color:#333}
     <div class="left-panel">
       <div class="card folder-input-card">
         <h3>Create New Lesson Folder</h3>
-        <div class="input-group">
-          <label for="folderName">Folder/Lesson Name</label>
-          <input type="text" id="folderName" placeholder="e.g., 'Algebra Unit 1'" maxlength="100">
-          <select id="folderCourseSelect" style="width:100%;padding:10px;border-radius:6px;border:1px solid #ccc;margin-bottom:10px;">
-            <option value="">Select course (optional)</option>
-          </select>
-          <button class="btn" onclick="createFolder()">Create Folder</button>
-        </div>
+        <input type="text" id="folderName" placeholder="e.g., Algebra Unit 1" maxlength="100">
+        <select id="folderCourseSelect" style="width:100%;padding:10px;border-radius:6px;border:1px solid #ccc;margin-bottom:10px;">
+          <option value="">Select course (optional)</option>
+        </select>
+        <button class="btn" onclick="createFolder()">Create Folder</button>
       </div>
 
       <div class="card folder-list-card">
         <h3>Lesson Folders</h3>
-        <div id="folderList">
-          <p style="color:#666;margin:0;">Loading folders...</p>
-        </div>
+        <div id="folderList"><p style="color:#666;margin:0;">Loading folders...</p></div>
       </div>
     </div>
 
-    <!-- RIGHT PANEL: Folder Contents + Quick Access -->
     <div class="right-panel">
       <div class="card" style="min-height:220px;">
         <h3>Folder Contents</h3>
-        <div id="folderContents">
-          <p style="color:#666;font-style:italic">Select a folder to see its contents, or create a new folder above.</p>
-        </div>
+        <div id="folderContents"><p style="color:#666;font-style:italic">Select a folder to see its contents.</p></div>
       </div>
 
-      <!-- Quick Access / Recently Edited design panel -->
       <div style="height:18px"></div>
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <h3 style="margin:0">Quick Access</h3>
-          <small style="color:#666">Your pinned & recent items</small>
+          <small style="color:#666">Pinned & recent items</small>
         </div>
-
-        <div class="quick-access-grid" id="quickAccessGrid">
-          <!-- JS will populate quick access cards here -->
-        </div>
-
+        <div class="quick-access-grid" id="quickAccessGrid"></div>
         <hr style="margin:12px 0;border:none;border-top:1px solid #eee" />
         <h4 style="margin:8px 0">Recently Edited</h4>
-        <div class="recent-list" id="recentList">
-          <!-- JS will populate recent files/folders -->
-        </div>
+        <div class="recent-list" id="recentList"></div>
       </div>
     </div>
   </div>
 
   <!-- COURSE VIEW -->
   <div id="courseView" class="dashboard-view" style="display:none">
-    <button class="btn add-btn" id="addCourseBtn">➕ Add New Course</button>
+    <button class="btn add-btn" id="addCourseBtn" onclick="openCourseModal()">➕ Add New Course</button>
     <div id="courseList">Loading courses...</div>
+  </div>
+</div>
+
+<!-- Course Creation Modal -->
+<div id="courseModal" class="modal-overlay">
+  <div class="modal-content">
+    <span class="modal-close" onclick="closeCourseModal()">&times;</span>
+    <h3>Create New Course</h3>
+    <p>Create a course and generate an access code for students to join.</p>
+    
+    <input type="text" id="courseTitle" placeholder="Course Title (e.g., Mathematics 101)" required>
+    <textarea id="courseDescription" placeholder="Course Description (optional)" rows="3"></textarea>
+    
+    <button class="btn" onclick="createCourse()">Create Course</button>
+    <div id="courseMessage" class="modal-message" role="alert"></div>
+  </div>
+</div>
+
+<!-- File Upload Modal -->
+<div id="fileUploadModal" class="modal-overlay">
+  <div class="modal-content">
+    <span class="modal-close" onclick="closeFileUploadModal()">&times;</span>
+    <h3 id="fileUploadTitle">Upload Files</h3>
+    <p>Select files to upload to this folder (PDF, PPT, images, etc.)</p>
+    
+    <input type="file" id="fileUploadInput" multiple accept=".pdf,.ppt,.pptx,.doc,.docx,.jpg,.jpeg,.png,.gif">
+    <input type="hidden" id="uploadFolderId">
+    
+    <button class="btn" onclick="uploadFiles()">Upload Files</button>
+    <div id="fileUploadMessage" class="modal-message" role="alert"></div>
   </div>
 </div>
 
 <!-- Toasts -->
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- Supabase CDN -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-
+<!-- ✅ API Script (No Supabase needed) -->
 <script>
-// Injected server-side variables
-const SUPABASE_URL = "<?php echo addslashes($supabase_url); ?>";
-const SUPABASE_ANON_KEY = "<?php echo addslashes($supabase_anon); ?>";
 const TEACHER_ID = <?php echo json_encode($teacher_id); ?>;
 const TEACHER_NAME = "<?php echo addslashes($teacher_name); ?>";
+const API_URL = 'api.php';
 
-// Basic guard
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.error('Supabase credentials not set. Please define SUPABASE_URL and SUPABASE_ANON_KEY in connect.php');
-  // Optionally show toast
-  showToast('Supabase credentials missing (server-side).', 'error');
-}
+// Global state
+let activeFolderId = null;
+let courses = [];
 
-const supabase = supabasejs.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// --- Toast helper ---
-function showToast(message, type = 'success', timeout = 3000) {
-  const container = document.getElementById('toastContainer');
-  const div = document.createElement('div');
-  div.className = `toast ${type}`;
-  div.textContent = message;
+// --- Toast ---
+function showToast(message, type='success', timeout=3000) {
+  const container=document.getElementById('toastContainer');
+  const div=document.createElement('div');
+  div.className=`toast ${type}`;
+  div.textContent=message;
   container.appendChild(div);
-  setTimeout(() => {
-    div.style.opacity = '0';
-    div.style.transform = 'translateY(12px)';
-    setTimeout(() => container.removeChild(div), 300);
-  }, timeout);
+  setTimeout(()=>{div.style.opacity='0';div.style.transform='translateY(12px)';setTimeout(()=>container.removeChild(div),300);},timeout);
 }
 
-// --- Sidebar toggles & view switching ---
-function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open')}
-
-function switchView(viewName, element){
+// --- Sidebar + View Switching ---
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');}
+function switchView(v,el){
   document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('active'));
-  if (element) element.classList.add('active');
-  document.getElementById('lessonManagerView').style.display = viewName === 'lessons' ? 'grid' : 'none';
-  document.getElementById('courseView').style.display = viewName === 'courses' ? 'block' : 'none';
-  document.getElementById('mainTitle').textContent = viewName === 'lessons' ? 'Lesson Manager' : 'My Courses';
-  if (viewName === 'courses') loadCourses(); else renderFolderList();
-  if (window.innerWidth <= 900) document.getElementById('sidebar').classList.remove('open');
+  if(el) el.classList.add('active');
+  document.getElementById('lessonManagerView').style.display=v==='lessons'?'grid':'none';
+  document.getElementById('courseView').style.display=v==='courses'?'block':'none';
+  document.getElementById('mainTitle').textContent=v==='lessons'?'Lesson Manager':'My Courses';
+  if(v==='courses') loadCourses(); else renderFolderList();
 }
 
-// --- Data functions: Courses / Folders / Files ---
-
-async function loadCourses() {
-  const container = document.getElementById('courseList');
-  container.innerHTML = 'Loading courses...';
+// --- Course Management ---
+async function loadCourses(){
+  const c=document.getElementById('courseList');
+  c.innerHTML='Loading...';
+  
   try {
-    const { data, error } = await supabase
-      .from('courses')
-      .select('id,title,description,access_code,created_at')
-      .eq('teacher_id', TEACHER_ID)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    if (!data || data.length === 0) {
-      container.innerHTML = '<p>No courses yet. Click “Add New Course” to start one!</p>';
-      populateCourseSelect([]);
+    const response = await fetch(`${API_URL}?action=get_courses`, { credentials: 'include' });
+    const data = await response.json();
+    
+    if (!data.success) {
+      showToast('Error loading courses', 'error');
+      c.innerHTML = '<p>Error loading courses.</p>';
       return;
     }
-    container.innerHTML = '';
-    populateCourseSelect(data);
-    data.forEach(course => {
-      const div = document.createElement('div');
-      div.className = 'card course-card';
-      div.innerHTML = `
-        <h3 style="font-weight:600">${escapeHtml(course.title)}</h3>
-        <p style="margin:0.5rem 0 1rem">${escapeHtml(course.description || 'No description provided.')}</p>
-        <small style="color:#666">Access code: <b>${escapeHtml(course.access_code || '')}</b></small>
-        <div style="margin-top:10px">
-          <button class="btn" onclick="openCourse(${course.id})">Open Course</button>
-          <button class="btn" style="background:#ffc107;color:#222;margin-left:8px" onclick="loadFoldersForCourse(${course.id})">View Folders</button>
+    
+    courses = data.courses || [];
+    
+    if (!courses.length) {
+      c.innerHTML='<p>No courses yet. Create your first course!</p>';
+      return;
+    }
+    
+    c.innerHTML='';
+    courses.forEach(course=>{
+      const d=document.createElement('div');
+      d.className='card';
+      d.innerHTML=`
+        <h3>📚 ${course.title}</h3>
+        <p>${course.description || 'No description provided.'}</p>
+        <small>Access Code: <b style="color: var(--kidemy-green);">${course.access_code}</b></small>
+        <div style="margin-top: 10px;">
+          <button class="btn btn-secondary copy-code-btn" data-code="${course.access_code}" style="padding: 5px 10px; font-size: 0.8rem;">📋 Copy Code</button>
         </div>
       `;
-      container.appendChild(div);
+      
+      // Add event listener for copy code button
+      d.querySelector('.copy-code-btn').addEventListener('click', function() {
+        copyAccessCode(this.getAttribute('data-code'));
+      });
+      
+      c.appendChild(d);
     });
-  } catch (err) {
-    console.error(err);
-    container.innerHTML = `<p style="color:red">Error loading courses. Check console.</p>`;
-    showToast('Could not load courses', 'error');
+    
+    // Update course dropdown
+    updateCourseDropdown();
+    
+  } catch (error) {
+    console.error('Error loading courses:', error);
+    showToast('Error loading courses', 'error');
+    c.innerHTML = '<p>Error loading courses.</p>';
   }
 }
 
-function populateCourseSelect(courses) {
-  const sel = document.getElementById('folderCourseSelect');
-  sel.innerHTML = '<option value="">Select course (optional)</option>';
-  courses.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = c.title;
-    sel.appendChild(opt);
+function updateCourseDropdown() {
+  const select = document.getElementById('folderCourseSelect');
+  select.innerHTML = '<option value="">Select course (optional)</option>';
+  if (courses && courses.length > 0) {
+    courses.forEach(course => {
+      const option = document.createElement('option');
+      option.value = course.id;
+      option.textContent = course.title;
+      select.appendChild(option);
+    });
+  }
+}
+
+function copyAccessCode(code) {
+  navigator.clipboard.writeText(code).then(() => {
+    showToast(`Access code ${code} copied to clipboard!`, 'success');
+  }).catch(() => {
+    showToast('Failed to copy access code', 'error');
   });
 }
 
-// Create course (prompt modal replaced by simple prompt for now)
-document.getElementById('addCourseBtn').addEventListener('click', async () => {
-  const title = prompt('Enter course title:');
-  if (!title || !title.trim()) return;
-  const description = prompt('Enter description (optional):') || '';
-  try {
-    const { data, error } = await supabase
-      .from('courses')
-      .insert([{ title: title.trim(), description: description.trim(), teacher_id: TEACHER_ID, access_code: generateAccessCode() }])
-      .select()
-      .single();
-    if (error) throw error;
-    showToast('Course created successfully', 'success');
-    loadCourses();
-    // update Quick Access
-    refreshQuickAccess();
-  } catch (err) {
-    console.error(err);
-    showToast('Failed to create course', 'error');
+// --- Course Modal ---
+function openCourseModal() {
+  document.getElementById('courseModal').style.display = 'flex';
+  document.getElementById('courseTitle').value = '';
+  document.getElementById('courseDescription').value = '';
+  document.getElementById('courseMessage').style.display = 'none';
+}
+
+function closeCourseModal() {
+  document.getElementById('courseModal').style.display = 'none';
+}
+
+async function createCourse() {
+  const title = document.getElementById('courseTitle').value.trim();
+  const description = document.getElementById('courseDescription').value.trim();
+  
+  if (!title) {
+    showModalMessage('courseMessage', 'Please enter a course title.', 'error');
+    return;
   }
-});
-
-function generateAccessCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let s = '';
-  for (let i=0;i<6;i++) s += chars[Math.floor(Math.random()*chars.length)];
-  return s;
-}
-
-function openCourse(id) {
-  window.location.href = 'teacher_course.php?id=' + id;
-}
-
-// --- FOLDERS ---
-async function renderFolderList() {
-  const container = document.getElementById('folderList');
-  container.innerHTML = 'Loading...';
+  
+  const createBtn = document.querySelector('#courseModal .btn');
+  createBtn.disabled = true;
+  createBtn.textContent = 'Creating...';
+  
   try {
-    // Get all folders for this teacher (optionally show only recent)
-    const { data, error } = await supabase
-      .from('folders')
-      .select('id,name,description,created_at,course_id')
-      .eq('teacher_id', TEACHER_ID)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (error) throw error;
-    if (!data || data.length === 0) {
-      container.innerHTML = '<p style="color:#666;margin:0;">No folders yet. Create your first one above!</p>';
+    const formData = new FormData();
+    formData.append('action', 'create_course');
+    formData.append('title', title);
+    formData.append('description', description);
+    
+    const response = await fetch(API_URL, { 
+      method: 'POST', 
+      body: formData, 
+      credentials: 'include' 
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      showModalMessage('courseMessage', `Course "${data.course.title}" created successfully! Access code: ${data.course.access_code}`, 'success');
+      setTimeout(() => {
+        closeCourseModal();
+        loadCourses();
+      }, 2000);
+    } else {
+      showModalMessage('courseMessage', data.message || 'Failed to create course.', 'error');
+    }
+  } catch (error) {
+    showModalMessage('courseMessage', 'Network error. Could not create course.', 'error');
+    console.error('Create course error:', error);
+  } finally {
+    createBtn.disabled = false;
+    createBtn.textContent = 'Create Course';
+  }
+}
+
+function showModalMessage(elementId, message, type) {
+  const el = document.getElementById(elementId);
+  el.textContent = message;
+  el.className = `modal-message ${type}`;
+  el.style.display = 'block';
+  setTimeout(() => {
+    el.style.display = 'none';
+  }, 4000);
+}
+
+// --- Folder Management ---
+async function renderFolderList(){
+  const fl=document.getElementById('folderList');
+  fl.innerHTML = '<p style="color:#666;margin:0;">Loading folders...</p>';
+  
+  try {
+    const response = await fetch(`${API_URL}?action=get_folders`, { credentials: 'include' });
+    const data = await response.json();
+    
+    if (!data.success) {
+      showToast('Error loading folders', 'error');
+      fl.innerHTML = '<p>Error loading folders.</p>';
       return;
     }
-    container.innerHTML = '';
-    data.forEach(folder => {
-      const div = document.createElement('div');
-      div.className = `folder-item ${folder.id === activeFolderId ? 'active' : ''}`;
-      div.innerHTML = `
-        <h4 style="display:flex;align-items:center;gap:8px"><span style="font-size:1.2rem">&#128193;</span> ${escapeHtml(folder.name)}</h4>
-        <small>Created: ${new Date(folder.created_at).toLocaleDateString()}</small>
-      `;
-      div.onclick = () => selectFolder(folder.id, folder.name);
-      container.appendChild(div);
+    
+    const folders = data.folders || [];
+    
+    if (!folders.length) {
+      fl.innerHTML='<p>No folders yet. Create your first folder!</p>';
+      return;
+    }
+    
+    fl.innerHTML='';
+    folders.forEach(f=>{
+      const d=document.createElement('div');
+      d.className='folder-item';
+      d.innerHTML=`<h4>📁 ${f.name}</h4>`;
+      d.onclick=()=>selectFolder(f.id,f.name);
+      fl.appendChild(d);
     });
-  } catch (err) {
-    console.error(err);
-    container.innerHTML = '<p style="color:red">Failed to load folders.</p>';
-    showToast('Failed to load folders', 'error');
+    
+  } catch (error) {
+    console.error('Error loading folders:', error);
+    showToast('Error loading folders', 'error');
+    fl.innerHTML = '<p>Error loading folders.</p>';
   }
 }
 
-async function createFolder() {
-  const name = document.getElementById('folderName').value.trim();
-  const courseId = document.getElementById('folderCourseSelect').value || null;
-  if (!name) { showToast('Please enter a folder name', 'error'); return; }
-  try {
-    const payload = { name, teacher_id: TEACHER_ID, course_id: courseId };
-    const { data, error } = await supabase.from('folders').insert([payload]).select().single();
-    if (error) throw error;
-    document.getElementById('folderName').value = '';
-    renderFolderList();
-    showToast('Folder created', 'success');
-    // show newly created folder contents
-    selectFolder(data.id, data.name);
-    refreshQuickAccess();
-  } catch (err) {
-    console.error(err);
-    showToast('Could not create folder', 'error');
+async function createFolder(){
+  const name=document.getElementById('folderName').value.trim();
+  const course=document.getElementById('folderCourseSelect').value||null;
+  
+  if(!name){
+    showToast('Enter folder name','error');
+    return;
   }
-}
-
-let activeFolderId = null;
-function selectFolder(id, name) {
-  activeFolderId = id;
-  renderFolderList();
-  renderFolderContents(id, name);
-}
-
-async function loadFoldersForCourse(courseId) {
+  
   try {
-    const { data, error } = await supabase.from('folders').select('id,name,created_at').eq('course_id', courseId).order('created_at', { ascending:false });
-    if (error) throw error;
-    // show these in folderList temporarily
-    const container = document.getElementById('folderList');
-    container.innerHTML = '';
-    data.forEach(folder => {
-      const div = document.createElement('div');
-      div.className = 'folder-item';
-      div.innerHTML = `<h4>&#128193; ${escapeHtml(folder.name)}</h4><small>Created: ${new Date(folder.created_at).toLocaleDateString()}</small>`;
-      div.onclick = () => selectFolder(folder.id, folder.name);
-      container.appendChild(div);
+    const formData = new FormData();
+    formData.append('action', 'create_folder');
+    formData.append('name', name);
+    if (course) formData.append('course_id', course);
+    
+    const response = await fetch(API_URL, { 
+      method: 'POST', 
+      body: formData, 
+      credentials: 'include' 
     });
-    showToast('Folders loaded for course', 'info');
-  } catch (err) {
-    console.error(err);
-    showToast('Failed to load folders for course', 'error');
+    const data = await response.json();
+    
+    if (data.success) {
+      document.getElementById('folderName').value='';
+      showToast('Folder created','success');
+      renderFolderList();
+    } else {
+      showToast(data.message || 'Error creating folder','error');
+    }
+  } catch (error) {
+    console.error('Error creating folder:', error);
+    showToast('Error creating folder','error');
   }
 }
 
-// --- Folder contents & file uploads ---
-async function renderFolderContents(folderId, folderName) {
-  const contentsDiv = document.getElementById('folderContents');
-  contentsDiv.innerHTML = `<h4 style="color:var(--kidemy-green)">${escapeHtml(folderName)} Contents</h4>
-    <div style="margin-bottom:12px">Upload files to this folder</div>
-    <input type="file" id="fileUpload" multiple style="margin-bottom:8px">
-    <button class="btn" onclick="uploadMaterial()">Upload Selected Files</button>
-    <div id="fileList" style="margin-top:16px"></div>
+function selectFolder(id,name){
+  activeFolderId=id;
+  
+  // Highlight active folder
+  document.querySelectorAll('.folder-item').forEach(el => el.classList.remove('active'));
+  event.target.closest('.folder-item').classList.add('active');
+  
+  renderFolderContents(id,name);
+}
+
+async function renderFolderContents(id,name){
+  const c=document.getElementById('folderContents');
+  c.innerHTML=`
+    <h4>📁 ${name}</h4>
+    <div style="margin-bottom: 15px;">
+      <button class="btn" id="uploadBtn" data-folder-id="${id}" data-folder-name="${name}">📤 Upload Files</button>
+    </div>
+    <div id="fileList">Loading files...</div>
   `;
-  loadFiles(folderId);
+  
+  // Add event listener to upload button
+  document.getElementById('uploadBtn').addEventListener('click', function() {
+    const folderId = this.getAttribute('data-folder-id');
+    const folderName = this.getAttribute('data-folder-name');
+    openFileUploadModal(folderId, folderName);
+  });
+  
+  loadFiles(id);
 }
 
-async function uploadMaterial() {
-  const input = document.getElementById('fileUpload');
-  if (!input || input.files.length === 0) { showToast('Please choose files to upload', 'error'); return; }
-  if (!activeFolderId) { showToast('Select a folder first', 'error'); return; }
-
-  const files = Array.from(input.files);
-  showToast(`Uploading ${files.length} file(s)...`, 'info', 2000);
-
+async function loadFiles(id){
+  const list=document.getElementById('fileList');
+  list.innerHTML = '<p>Loading files...</p>';
+  
   try {
-    for (const file of files) {
-      // create a unique path
-      const uniqueName = `${Date.now()}_${sanitizeFilename(file.name)}`;
-      const { data:uploadData, error:uploadErr } = await supabase.storage.from('uploads').upload(uniqueName, file);
-      if (uploadErr) throw uploadErr;
-
-      // get public url (or you can set up signed urls)
-      const { data: publicData } = supabase.storage.from('uploads').getPublicUrl(uniqueName);
-
-      // record metadata in files table
-      const { error: insertErr } = await supabase.from('files').insert([{
-        folder_id: activeFolderId,
-        course_id: null,
-        file_name: file.name,
-        file_path: publicData.publicUrl,
-        uploaded_by: TEACHER_ID
-      }]);
-
-      if (insertErr) throw insertErr;
-    }
-
-    input.value = '';
-    showToast('Upload(s) complete', 'success');
-    loadFiles(activeFolderId);
-    refreshQuickAccess();
-  } catch (err) {
-    console.error(err);
-    showToast('File upload failed', 'error');
-  }
-}
-
-async function loadFiles(folderId) {
-  const listDiv = document.getElementById('fileList');
-  listDiv.innerHTML = 'Loading files...';
-  try {
-    const { data, error } = await supabase.from('files').select('id,file_name,file_path,uploaded_at').eq('folder_id', folderId).order('uploaded_at', { ascending: false });
-    if (error) throw error;
-    if (!data || data.length === 0) {
-      listDiv.innerHTML = '<p style="color:#666">No uploaded materials yet.</p>';
+    const response = await fetch(`${API_URL}?action=get_files&folder_id=${id}`, { credentials: 'include' });
+    const data = await response.json();
+    
+    if (!data.success) {
+      showToast('Error loading files','error');
+      list.innerHTML = '<p>Error loading files.</p>';
       return;
     }
-    listDiv.innerHTML = '<ul style="list-style:none;padding:0;margin:0">' + data.map(f => `<li style="padding:8px 0">&#128196; <a href="${escapeHtml(f.file_path)}" target="_blank">${escapeHtml(f.file_name)}</a> <small style="color:#666;margin-left:8px">${new Date(f.uploaded_at).toLocaleString()}</small></li>`).join('') + '</ul>';
-  } catch (err) {
-    console.error(err);
-    listDiv.innerHTML = '<p style="color:red">Failed to load files.</p>';
-    showToast('Failed to load files', 'error');
+    
+    const files = data.files || [];
+    
+    if (!files.length) {
+      list.innerHTML='<p>No files yet. Upload some files!</p>';
+      return;
+    }
+    
+    list.innerHTML = files.map(f=>`
+      <div class="file-item">
+        <span>📄 <a href="${f.file_path}" target="_blank">${f.file_name}</a></span>
+        <button class="btn btn-secondary delete-file-btn" data-file-id="${f.id}" data-file-name="${f.file_name}" style="padding: 5px 10px; font-size: 0.8rem;">🗑️ Delete</button>
+      </div>
+    `).join('');
+    
+    // Add event listeners for delete buttons
+    list.querySelectorAll('.delete-file-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const fileId = this.getAttribute('data-file-id');
+        const fileName = this.getAttribute('data-file-name');
+        deleteFile(fileId, fileName);
+      });
+    });
+    
+  } catch (error) {
+    console.error('Error loading files:', error);
+    showToast('Error loading files','error');
+    list.innerHTML = '<p>Error loading files.</p>';
   }
 }
 
-// --- Quick Access & Recently Edited UI ---
-async function refreshQuickAccess() {
+// --- File Upload Modal ---
+function openFileUploadModal(folderId, folderName) {
+  document.getElementById('fileUploadModal').style.display = 'flex';
+  document.getElementById('fileUploadTitle').textContent = `Upload Files to: ${folderName}`;
+  document.getElementById('uploadFolderId').value = folderId;
+  document.getElementById('fileUploadInput').value = '';
+  document.getElementById('fileUploadMessage').style.display = 'none';
+}
+
+function closeFileUploadModal() {
+  document.getElementById('fileUploadModal').style.display = 'none';
+}
+
+async function uploadFiles() {
+  const input = document.getElementById('fileUploadInput');
+  const folderId = document.getElementById('uploadFolderId').value;
+  
+  if (!input.files.length) {
+    showModalMessage('fileUploadMessage', 'Please select files to upload.', 'error');
+    return;
+  }
+  
+  const uploadBtn = document.querySelector('#fileUploadModal .btn');
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = 'Uploading...';
+  
+  let successCount = 0;
+  let errorCount = 0;
+  
   try {
-    // get some pinned/frequency items (for demo: top 6 recent folders + files)
-    const { data:folders } = await supabase.from('folders').select('id,name,created_at').eq('teacher_id', TEACHER_ID).order('created_at', { ascending:false }).limit(4);
-    const { data:files } = await supabase.from('files').select('id,file_name,file_path,uploaded_at').eq('uploaded_by', TEACHER_ID).order('uploaded_at', { ascending:false }).limit(6);
-
-    const qa = document.getElementById('quickAccessGrid');
-    qa.innerHTML = '';
-    (folders||[]).forEach(f => {
-      const card = document.createElement('div');
-      card.className = 'qa-card';
-      card.innerHTML = `<strong>${escapeHtml(f.name)}</strong><div class="meta">Folder · ${new Date(f.created_at).toLocaleDateString()}</div>`;
-      card.onclick = () => selectFolder(f.id, f.name);
-      qa.appendChild(card);
-    });
-
-    const recent = document.getElementById('recentList');
-    recent.innerHTML = '';
-    (files||[]).forEach(f => {
-      const item = document.createElement('div');
-      item.className = 'recent-item';
-      item.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><span style="font-size:1.2rem">&#128196;</span><div><div style="font-weight:600">${escapeHtml(f.file_name)}</div><div style="font-size:0.85rem;color:#666">${new Date(f.uploaded_at).toLocaleString()}</div></div></div><a href="${escapeHtml(f.file_path)}" target="_blank" class="btn" style="background:#f1f1f1;color:#222">Open</a>`;
-      recent.appendChild(item);
-    });
-  } catch (err) {
-    console.error(err);
+    for (const file of input.files) {
+      const formData = new FormData();
+      formData.append('action', 'upload_file');
+      formData.append('folder_id', folderId);
+      formData.append('file', file);
+      
+      const response = await fetch(API_URL, { 
+        method: 'POST', 
+        body: formData, 
+        credentials: 'include' 
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        successCount++;
+      } else {
+        errorCount++;
+        console.error('Upload error for', file.name, ':', data.message);
+      }
+    }
+    
+    if (successCount > 0) {
+      showModalMessage('fileUploadMessage', `${successCount} file(s) uploaded successfully!`, 'success');
+      setTimeout(() => {
+        closeFileUploadModal();
+        loadFiles(folderId);
+      }, 1500);
+    }
+    
+    if (errorCount > 0) {
+      showModalMessage('fileUploadMessage', `${errorCount} file(s) failed to upload.`, 'error');
+    }
+    
+  } catch (error) {
+    showModalMessage('fileUploadMessage', 'Network error during upload.', 'error');
+    console.error('Upload error:', error);
+  } finally {
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'Upload Files';
   }
 }
 
-// --- Utilities ---
-function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function sanitizeFilename(n){ return n.replace(/[^A-Za-z0-9_\-\.]/g,'_'); }
-function activeOrNull(v){ return v ? v : null; }
+async function deleteFile(fileId, fileName) {
+  if (!confirm(`Are you sure you want to delete "${fileName}"?`)) {
+    return;
+  }
+  
+  try {
+    const formData = new FormData();
+    formData.append('action', 'delete_file');
+    formData.append('file_id', fileId);
+    
+    const response = await fetch(API_URL, { 
+      method: 'POST', 
+      body: formData, 
+      credentials: 'include' 
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast('File deleted successfully!', 'success');
+      loadFiles(activeFolderId);
+    } else {
+      showToast(data.message || 'Failed to delete file.', 'error');
+    }
+  } catch (error) {
+    showToast('Error deleting file.', 'error');
+    console.error('Delete file error:', error);
+  }
+}
 
 // Initial load
-document.addEventListener('DOMContentLoaded', () => {
-  // initial content
+document.addEventListener('DOMContentLoaded',()=>{
   renderFolderList();
   loadCourses();
-  refreshQuickAccess();
-  document.querySelector('.nav-link[data-view="lessons"]').classList.add('active');
 });
 </script>
 </body>

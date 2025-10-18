@@ -409,7 +409,7 @@ body {
   
   <!-- 2. Course Content View (Hidden by default, used when a course card is clicked) -->
   <div id="courseContentView" class="dashboard-view" style="display: none;">
-      <button class="btn btn-secondary" onclick="switchView('courses', document.querySelector('.nav-link[data-view="courses"]'))" style="margin-bottom: 1.5rem;">&#x2190; Back to My Courses</button>
+      <button class="btn btn-secondary" onclick="switchView('courses', document.querySelector('.nav-link[data-view=\"courses\"]'))" style="margin-bottom: 1.5rem;">&#x2190; Back to My Courses</button>
       
       <div class="course-content-grid">
           
@@ -901,7 +901,7 @@ function renderSubmissionTable(submissions) {
                 <td>
                     <button 
                         class="submission-action-btn" 
-                        onclick=`deleteSubmission(${sub.id}, ${isChecked ? 'true' : 'false'})`
+                        onclick="deleteSubmission(${sub.id}, '${isChecked ? 'true' : 'false'}')"
                         ${isChecked ? 'disabled' : ''}
                         title="${isChecked ? 'Cannot delete checked submissions.' : 'Delete this submission.'}"
                     >

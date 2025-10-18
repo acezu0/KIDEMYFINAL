@@ -1,137 +1,201 @@
 <?php
-// final_api.php — unified backend for Kidemy Teacher Dashboard
-session_start();
-header("Content-Type: application/json");
+// Teacher API - Using local database like student_api.php
+require_once 'connect.php';
+header('Content-Type: application/json; charset=utf-8');
 
-// ✅ Ensure only logged-in teachers can access
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'teacher') {
-    echo json_encode(["success" => false, "message" => "Unauthorized"]);
-    exit;
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit();
 }
 
-// ✅ Supabase connection details
-// You can store these securely in an .env file or constants.php
-define('SUPABASE_URL', 'https://YOUR-PROJECT-ID.supabase.co');
-define('SUPABASE_KEY', 'YOUR-SERVICE-ROLE-KEY'); // Service key required for insert/update
-define('SUPABASE_TABLE_COURSES', 'courses');
-define('SUPABASE_TABLE_FOLDERS', 'folders');
+$teacher_id = $_SESSION['user']['id'];
+$action = strtolower(trim($_GET['action'] ?? $_POST['action'] ?? ''));
 
-// ✅ Helper function for Supabase REST calls
-function supabase_request($method, $table, $params = [], $body = null) {
-    $url = SUPABASE_URL . "/rest/v1/" . $table;
-    if (!empty($params)) {
-        $url .= '?' . http_build_query($params);
-    }
-
-    $opts = [
-        "http" => [
-            "method" => $method,
-            "header" => [
-                "Content-Type: application/json",
-                "apikey: " . SUPABASE_KEY,
-                "Authorization: Bearer " . SUPABASE_KEY,
-                "Prefer: return=representation"
-            ],
-        ]
-    ];
-
-    if ($body) {
-        $opts["http"]["content"] = json_encode($body);
-    }
-
-    $context = stream_context_create($opts);
-    $response = file_get_contents($url, false, $context);
-
-    if ($response === FALSE) {
-        return ["success" => false, "message" => "Supabase request failed."];
-    }
-
-    $data = json_decode($response, true);
-    return ["success" => true, "data" => $data];
+function respond($data, $status = 200) {
+    http_response_code($status);
+    echo json_encode($data);
+    exit();
 }
 
-// ✅ Determine action
-$action = $_GET['action'] ?? $_POST['action'] ?? '';
+function handleFileUpload($file, $targetDir = 'uploads/materials/') {
+    if (!isset($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK)
+        return ['error' => 'Invalid file upload.'];
 
-switch ($action) {
-    /* --------------------------------------------------------------------------
-     *  COURSES
-     * -------------------------------------------------------------------------- */
-    case 'get_courses':
-        $teacherId = $_SESSION['user']['id'];
-        $res = supabase_request('GET', SUPABASE_TABLE_COURSES, ['teacher_id' => "eq.$teacherId"]);
-        if (!$res['success']) {
-            echo json_encode(["success" => false, "message" => "Failed to fetch courses."]);
-            exit;
-        }
-        echo json_encode(["success" => true, "courses" => $res['data']]);
-        break;
+    if (!is_dir($targetDir)) mkdir($targetDir, 0777, true);
 
-    case 'create_course':
-        $teacherId = $_SESSION['user']['id'];
-        $title = trim($_POST['title'] ?? '');
-        $desc = trim($_POST['description'] ?? '');
-        if ($title === '') {
-            echo json_encode(["success" => false, "message" => "Course title is required."]);
-            exit;
-        }
+    $fileName = uniqid() . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', $file['name']);
+    $targetPath = $targetDir . $fileName;
 
-        // Generate unique access code
-        $accessCode = substr(strtoupper(bin2hex(random_bytes(3))), 0, 6);
-        $course = [
-            "teacher_id" => $teacherId,
-            "title" => $title,
-            "description" => $desc,
-            "access_code" => $accessCode,
-            "created_at" => date('c')
-        ];
+    if (!move_uploaded_file($file['tmp_name'], $targetPath))
+        return ['error' => 'Failed to move uploaded file.'];
 
-        $res = supabase_request('POST', SUPABASE_TABLE_COURSES, [], [$course]);
-        if (!$res['success']) {
-            echo json_encode(["success" => false, "message" => "Failed to create course."]);
-            exit;
-        }
-
-        echo json_encode(["success" => true, "message" => "Course created successfully!", "course" => $res['data'][0]]);
-        break;
-
-    /* --------------------------------------------------------------------------
-     *  FOLDERS (Lesson Manager)
-     * -------------------------------------------------------------------------- */
-    case 'get_folders':
-        $teacherId = $_SESSION['user']['id'];
-        $res = supabase_request('GET', SUPABASE_TABLE_FOLDERS, ['teacher_id' => "eq.$teacherId"]);
-        if (!$res['success']) {
-            echo json_encode(["success" => false, "message" => "Failed to fetch folders."]);
-            exit;
-        }
-        echo json_encode(["success" => true, "folders" => $res['data']]);
-        break;
-
-    case 'create_folder':
-        $teacherId = $_SESSION['user']['id'];
-        $name = trim($_POST['name'] ?? '');
-        if ($name === '') {
-            echo json_encode(["success" => false, "message" => "Folder name is required."]);
-            exit;
-        }
-
-        $folder = [
-            "teacher_id" => $teacherId,
-            "name" => $name,
-            "created_at" => date('c')
-        ];
-
-        $res = supabase_request('POST', SUPABASE_TABLE_FOLDERS, [], [$folder]);
-        if (!$res['success']) {
-            echo json_encode(["success" => false, "message" => "Failed to create folder."]);
-            exit;
-        }
-
-        echo json_encode(["success" => true, "message" => "Folder created successfully!", "folder" => $res['data'][0]]);
-        break;
-
-    default:
-        echo json_encode(["success" => false, "message" => "Invalid action."]);
-        break;
+    return ['path' => $targetPath, 'name' => $file['name']];
 }
+
+try {
+    switch ($action) {
+        case 'get_courses':
+            $stmt = $pdo->prepare("
+                SELECT id, title, description, access_code, created_at
+                FROM courses 
+                WHERE teacher_id = :tid
+                ORDER BY created_at DESC
+            ");
+            $stmt->execute([':tid' => $teacher_id]);
+            respond(['success' => true, 'courses' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        case 'create_course':
+            $title = trim($_POST['title'] ?? '');
+            $description = trim($_POST['description'] ?? '');
+            
+            if ($title === '') {
+                respond(['success' => false, 'message' => 'Course title is required.'], 400);
+            }
+
+            // Generate unique access code
+            $accessCode = substr(strtoupper(bin2hex(random_bytes(3))), 0, 6);
+            
+            $stmt = $pdo->prepare("
+                INSERT INTO courses (teacher_id, title, description, access_code, created_at)
+                VALUES (:tid, :title, :desc, :code, NOW())
+                RETURNING id, title, description, access_code, created_at
+            ");
+            $stmt->execute([
+                ':tid' => $teacher_id,
+                ':title' => $title,
+                ':desc' => $description,
+                ':code' => $accessCode
+            ]);
+            
+            $course = $stmt->fetch(PDO::FETCH_ASSOC);
+            respond(['success' => true, 'message' => 'Course created successfully!', 'course' => $course]);
+            break;
+
+        case 'get_folders':
+            $stmt = $pdo->prepare("
+                SELECT f.id, f.name, f.course_id, f.created_at, c.title as course_title
+                FROM folders f
+                JOIN courses c ON f.course_id = c.id
+                WHERE c.teacher_id = :tid
+                ORDER BY f.created_at DESC
+            ");
+            $stmt->execute([':tid' => $teacher_id]);
+            respond(['success' => true, 'folders' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        case 'create_folder':
+            $name = trim($_POST['name'] ?? '');
+            $courseId = $_POST['course_id'] ?? null;
+            
+            if ($name === '') {
+                respond(['success' => false, 'message' => 'Folder name is required.'], 400);
+            }
+
+            // If no course_id provided, we need to create a folder without a course
+            // But first verify the teacher owns the course if course_id is provided
+            if ($courseId) {
+                $stmt = $pdo->prepare("SELECT id FROM courses WHERE id = :cid AND teacher_id = :tid");
+                $stmt->execute([':cid' => $courseId, ':tid' => $teacher_id]);
+                if (!$stmt->fetch()) {
+                    respond(['success' => false, 'message' => 'Course not found or access denied.'], 403);
+                }
+            }
+
+            $stmt = $pdo->prepare("
+                INSERT INTO folders (name, course_id, created_at)
+                VALUES (:name, :cid, NOW())
+                RETURNING id, name, course_id, created_at
+            ");
+            $stmt->execute([
+                ':name' => $name,
+                ':cid' => $courseId
+            ]);
+            
+            $folder = $stmt->fetch(PDO::FETCH_ASSOC);
+            respond(['success' => true, 'message' => 'Folder created successfully!', 'folder' => $folder]);
+            break;
+
+        case 'get_files':
+            $folderId = $_GET['folder_id'] ?? '';
+            if (!$folderId) {
+                respond(['success' => false, 'message' => 'Folder ID is required.'], 400);
+            }
+
+            $stmt = $pdo->prepare("
+                SELECT id, file_name, file_path, uploaded_at, uploaded_by
+                FROM files 
+                WHERE folder_id = :fid
+                ORDER BY uploaded_at DESC
+            ");
+            $stmt->execute([':fid' => $folderId]);
+            respond(['success' => true, 'files' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            break;
+
+        case 'upload_file':
+            $folderId = $_POST['folder_id'] ?? '';
+            $file = $_FILES['file'] ?? null;
+            
+            if (!$folderId || !$file) {
+                respond(['success' => false, 'message' => 'Folder ID and file are required.'], 400);
+            }
+
+            $upload = handleFileUpload($file);
+            if (isset($upload['error'])) {
+                respond(['success' => false, 'message' => $upload['error']], 400);
+            }
+
+            $stmt = $pdo->prepare("
+                INSERT INTO files (folder_id, file_name, file_path, uploaded_by, uploaded_at)
+                VALUES (:fid, :fname, :fpath, :uid, NOW())
+                RETURNING id, file_name, file_path, uploaded_at
+            ");
+            $stmt->execute([
+                ':fid' => $folderId,
+                ':fname' => $upload['name'],
+                ':fpath' => $upload['path'],
+                ':uid' => $teacher_id
+            ]);
+            
+            $fileData = $stmt->fetch(PDO::FETCH_ASSOC);
+            respond(['success' => true, 'message' => 'File uploaded successfully!', 'file' => $fileData]);
+            break;
+
+        case 'delete_file':
+            $fileId = $_POST['file_id'] ?? '';
+            if (!$fileId) {
+                respond(['success' => false, 'message' => 'File ID is required.'], 400);
+            }
+
+            // First get file info to delete the actual file
+            $stmt = $pdo->prepare("SELECT file_path FROM files WHERE id = :fid");
+            $stmt->execute([':fid' => $fileId]);
+            $file = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$file) {
+                respond(['success' => false, 'message' => 'File not found.'], 404);
+            }
+            
+            // Delete the actual file
+            if (file_exists($file['file_path'])) {
+                unlink($file['file_path']);
+            }
+
+            // Delete the database record
+            $stmt = $pdo->prepare("DELETE FROM files WHERE id = :fid");
+            $stmt->execute([':fid' => $fileId]);
+            
+            respond(['success' => true, 'message' => 'File deleted successfully!']);
+            break;
+
+        default:
+            respond(['success' => false, 'message' => 'Invalid action.'], 400);
+    }
+
+} catch (PDOException $e) {
+    respond(['success' => false, 'message' => 'Database error: ' . $e->getMessage()], 500);
+} catch (Exception $e) {
+    respond(['success' => false, 'message' => 'Server error: ' . $e->getMessage()], 500);
+}
+?>
