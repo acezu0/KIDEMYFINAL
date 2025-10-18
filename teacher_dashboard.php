@@ -487,7 +487,7 @@ async function loadCourses() {
             return;
         }
 
-        if (.courses.length === 0) {
+        if (data.courses.length === 0) {
             container.innerHTML = '<p>No courses yet. Click “Add New Course” to start one!</p>';
             return;
         }
